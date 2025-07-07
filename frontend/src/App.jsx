@@ -1,7 +1,16 @@
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import Navbar from "./components/Navbar";
+
 export default function App() {
   return (
-    <div className="h-screen flex justify-center items-center bg-gradient-to-r from-blue-500 to-purple-600">
-      <h1 className="text-5xl font-bold text-white">🚀 ERP Frontend con Tailwind</h1>
-    </div>
+    <Router>
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+      </Routes>
+    </Router>
   );
 }
