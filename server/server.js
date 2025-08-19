@@ -32,7 +32,7 @@ app.use("/api/ventas", ventasRoutes);
 app.use("/api/ejecutivos", ejecutivesRoutes);
 
 // Ruta básica backend
-app.get("/api", (req, res) => {
+app.get("/", (req, res) => {
   res.send("ERP Backend conectado a MongoDB Atlas");
 });
 
