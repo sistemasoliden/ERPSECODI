@@ -18,9 +18,13 @@ const PORT = process.env.PORT || 5000;
 
 // Middlewares
 app.use(cors({
-  origin: ["http://localhost:5173"], // 👈 Puerto del frontend
+  origin: [
+    "http://localhost:5173", 
+    "https://erp-frontend.onrender.com"
+  ],
   credentials: true
 }));
+
 app.use(express.json());
 
 // Rutas
