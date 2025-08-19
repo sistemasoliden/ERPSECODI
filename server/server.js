@@ -16,7 +16,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 if (process.env.NODE_ENV === "production") {
-  const clientPath = path.join(__dirname, "frontend", "dist");
+    const clientPath = path.join(__dirname, "../frontend/dist");
   app.use(express.static(clientPath));
 
   // Cualquier ruta que no sea API debe devolver index.html
