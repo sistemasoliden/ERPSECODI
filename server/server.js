@@ -13,6 +13,18 @@ import bcrypt from "bcryptjs";
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+if (process.env.NODE_ENV === "production") {
+  const clientPath = path.join(__dirname, "client", "dist");
+  app.use(express.static(clientPath));
+
+  // Cualquier ruta que no sea API debe devolver index.html
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(clientPath, "index.html"));
+  });
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
