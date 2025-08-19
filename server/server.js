@@ -31,10 +31,6 @@ app.use("/api/users", userRoutes);
 app.use("/api/ventas", ventasRoutes);
 app.use("/api/ejecutivos", ejecutivesRoutes);
 
-// Ruta básica backend
-app.get("/", (req, res) => {
-  res.send("ERP Backend conectado a MongoDB Atlas");
-});
 
 // 👉 Servir frontend (solo en producción)
 const __filename = fileURLToPath(import.meta.url);
@@ -43,7 +39,7 @@ const __dirname = path.dirname(__filename);
 if (process.env.NODE_ENV === "production") {
   const clientPath = path.join(__dirname, "../frontend/dist");
   app.use(express.static(clientPath));
-  app.get("/api", (req, res) => {
+  app.get("/", (req, res) => {
     res.sendFile(path.join(clientPath, "index.html"));
   });
 }
