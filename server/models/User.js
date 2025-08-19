@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['administracion','backoffice','postventa','recursoshumanos','sistemas','gerencia','comercial'],
+    enum: ['administracion','backoffice','postventa','recursoshumanos','sistemas','gerencia','comercial',"supervisorcomercial"],
     required: true,
   },
   roleDescription: {

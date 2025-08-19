@@ -5,6 +5,9 @@ import cors from "cors";
 
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import ventasRoutes from "./routes/ventasRoutes.js";
+import ejecutivesRoutes from "./routes/ejecutivesRoutes.js";
+
 import User from "./models/User.js";
 import bcrypt from "bcryptjs";
 
@@ -23,16 +26,16 @@ app.use(express.json());
 // Rutas
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/ventas", ventasRoutes);
+app.use("/api/ejecutivos", ejecutivesRoutes);
+
 
 app.get("/", (req, res) => {
   res.send("ERP Backend conectado a MongoDB Atlas");
 });
 
 // Conexión a MongoDB
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
+mongoose.connect(process.env.MONGO_URI)
 .then(async () => {
   console.log("✅ Conectado a MongoDB Atlas");
 

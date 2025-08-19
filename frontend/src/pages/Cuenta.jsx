@@ -69,15 +69,6 @@ return (
         <p className="mt-3 text-gray-600 text-center max-w-md uppercase text-xs">
           {user.roleDescription}
         </p>
-
-        {/* Botón volver */}
-        <button
-          onClick={() => navigate(-1)}
-          className="mt-4 flex items-center gap-2 text-red-800 hover:text-red-600 transition"
-        >
-          <ArrowLeftCircle className="w-5 h-5" />
-          <span className="font-medium">Volver</span>
-        </button>
       </div>
 
       {/* Información a la derecha */}
@@ -99,7 +90,7 @@ return (
   <p className="text-xs text-black text-center uppercase tracking-wide font-bold mb-2">
     {item.title}
   </p>
-  <p className="text-xs text-center text-gray-700">
+  <p className="text-xs text-center text-gray-600 uppercase font-semibold">
     {item.value}
   </p>
 </div>

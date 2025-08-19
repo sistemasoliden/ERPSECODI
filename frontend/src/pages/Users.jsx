@@ -128,7 +128,7 @@ const Users = () => {
 <div className="fixed inset-0 flex items-center justify-center translate-y-4 sm:px-0">
 <div className="fixed inset-0 top-10 bg-black bg-opacity-50 transition-opacity duration-300">
 </div>
-  <div className="relative bg-white w-full max-w-sm max-h-95 p-4 sm:p-8 
+  <div className="relative bg-white w-full max-w-sm max-h-95 p-4 sm:p-8 border-black
     hover:scale-100 transition-transform z-50">
 
       <button
@@ -181,7 +181,7 @@ const Users = () => {
            transition duration-200 ease-in-out placeholder-gray-400"
 
         >
-          {['administracion','backoffice','postventa','recursoshumanos','sistemas','gerencia','comercial']
+          {['administracion','backoffice','postventa','recursoshumanos','sistemas','gerencia','comercial',"supervisorcomercial"]
             .map(r => <option key={r} value={r}>{r}</option>)}
         </select>
         <textarea
