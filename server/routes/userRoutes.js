@@ -21,9 +21,9 @@ const upload = multer({ storage });
 
 // 📌 Rutas de usuarios
 router.get('/', verifyToken, isAdmin, getAllUsers);             // Listar todos (admin)
-router.get('/:id', verifyToken, getUserById);             // Obtener por ID
+router.get('/profile', verifyToken, getProfile);                // Perfil del usuario logueado
+router.get('/:id', verifyToken, getUserById);                   // Obtener por ID
 router.post('/', verifyToken, isAdmin, upload.single('avatar'), createUser); // Crear
-router.put('/:id', verifyToken, upload.single('avatar'), updateUser);  // Actualizar
-router.get('/profile', verifyToken, getProfile);                // ✅ Nuevo endpoint: Perfil
+router.put('/:id', verifyToken, upload.single('avatar'), updateUser);        // Actualizar
 
 export default router;
