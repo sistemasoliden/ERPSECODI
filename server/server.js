@@ -20,7 +20,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors({
   origin: [
     "http://localhost:5173", 
-    "https://erp-frontend.onrender.com"
+    "https://erpsecodi.onrender.com"
   ],
   credentials: true
 }));

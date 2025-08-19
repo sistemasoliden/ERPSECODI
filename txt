@@ -1,0 +1,1 @@
+git add . && git commit -m "fix cors" && git push
