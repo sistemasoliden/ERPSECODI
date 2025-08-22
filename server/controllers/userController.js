@@ -1,92 +1,163 @@
-import User from '../models/User.js';
-import path from 'path';
-import fs from 'fs';
+// backend/controllers/userController.js
+import mongoose from "mongoose";
+import User from "../models/User.js";
 
-// 📄 Listar todos los usuarios (admin)
-export const getAllUsers = async (req, res) => {
+// userController.js
+export const listUsers = async (_req, res) => {
   try {
-    const users = await User.find().select('-password');
+    const users = await User.find()
+      .populate("role", "nombre slug")
+      .populate("estadoUsuario", "nombre")
+      .lean();
     res.json(users);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error al obtener usuarios' });
+  } catch (e) {
+    console.error("listUsers error:", e);
+    res.status(500).json({ error: "Error listando usuarios", detail: e.message });
   }
 };
 
-// 📄 Obtener usuario por ID
-export const getUserById = async (req, res) => {
+export const getUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    const user = await User.findById(req.params.id)
+      .populate("role", "nombre slug")
+      .populate("estadoUsuario", "nombre");
+    if (!user) return res.status(404).json({ error: "No encontrado" });
     res.json(user);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error al obtener usuario' });
+  } catch {
+    res.status(500).json({ error: "Error obteniendo usuario" });
   }
 };
 
-// ✨ Crear usuario con avatar opcional
+// backend/controllers/userController.js
+
 export const createUser = async (req, res) => {
   try {
-    const { name, email, password, role, roleDescription } = req.body;
+    const body = { ...req.body };
 
-    // Verificar si ya existe un usuario con el mismo email
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: 'Email ya registrado' });
+    // Fuerza esquema: no aceptar orgEmail del cliente (se autogenera)
+    delete body.orgEmail;
 
-    const userData = { name, email, password, role, roleDescription };
-
-    if (req.file) {
-      userData.avatar = `/uploads/${req.file.filename}`;
+    // Asegura que vengan firstName y lastName (el schema ya los pide required=true)
+    if (!body.firstName || !body.lastName) {
+      return res.status(400).json({ error: "firstName y lastName son obligatorios" });
     }
 
-    const newUser = new User(userData);
-    await newUser.save();
+    // Asegura que role/estadoUsuario sean ObjectId válidos
+    if (typeof body.role === "string" && mongoose.Types.ObjectId.isValid(body.role)) {
+      body.role = new mongoose.Types.ObjectId(body.role);
+    }
+    if (typeof body.estadoUsuario === "string" && mongoose.Types.ObjectId.isValid(body.estadoUsuario)) {
+      body.estadoUsuario = new mongoose.Types.ObjectId(body.estadoUsuario);
+    }
 
-    res.status(201).json({ message: 'Usuario creado exitosamente' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error al crear usuario' });
+    const user = await User.create(body);
+    const populated = await User.findById(user._id)
+      .populate("role", "nombre slug")
+      .populate("estadoUsuario", "nombre");
+    res.status(201).json(populated);
+  } catch (e) {
+    res.status(400).json({ error: e.message || "Error creando usuario" });
   }
 };
 
-// ✨ Actualizar usuario (nombre, descripción y avatar opcional)
+
 export const updateUser = async (req, res) => {
   try {
-    const updateData = {
-      name: req.body.name,
-      roleDescription: req.body.roleDescription,
-    };
+    const { id } = req.params;
+    const body = { ...req.body };
 
-    if (req.file) {
-      updateData.avatar = `/uploads/${req.file.filename}`;
+    // No permitir cambiar password aquí
+    delete body.password;
+
+    // No permitir setear orgEmail manualmente
+    delete body.orgEmail;
+
+    if (typeof body.role === "string" && mongoose.Types.ObjectId.isValid(body.role)) {
+      body.role = new mongoose.Types.ObjectId(body.role);
+    }
+    if (typeof body.estadoUsuario === "string" && mongoose.Types.ObjectId.isValid(body.estadoUsuario)) {
+      body.estadoUsuario = new mongoose.Types.ObjectId(body.estadoUsuario);
     }
 
-    const updated = await User.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).select('-password');
+    // Si cambian firstName/lastName, el pre('validate') del modelo se encargará
+    // de recalcular name y orgEmail únicos
+    const user = await User.findByIdAndUpdate(id, body, { new: true, runValidators: true })
+      .populate("role", "nombre slug")
+      .populate("estadoUsuario", "nombre");
 
-    if (!updated) {
-      return res.status(404).json({ message: 'Usuario no encontrado' });
-    }
-
-    res.json(updated);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error al actualizar usuario' });
-  }
-};
-
-// 🆕 📄 Obtener perfil del usuario autenticado
-export const getProfile = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select('-password');
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (!user) return res.status(404).json({ error: "No encontrado" });
     res.json(user);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error al obtener perfil' });
+  } catch {
+    res.status(400).json({ error: "Error actualizando usuario" });
   }
 };
+
+export const deleteUser = async (req, res) => {
+  try {
+    const ok = await User.findByIdAndDelete(req.params.id);
+    if (!ok) return res.status(404).json({ error: "No encontrado" });
+    res.json({ ok: true });
+  } catch {
+    res.status(400).json({ error: "Error eliminando usuario" });
+  }
+};
+
+// --------- tus endpoints existentes (ajustados a /me/...) ----------
+export const updateAvatar = async (req, res) => {
+  try {
+    const { avatar } = req.body;
+    if (!avatar) return res.status(400).json({ error: "Falta avatar URL" });
+
+    const user = await User.findByIdAndUpdate(req.user.id, { avatar }, { new: true })
+      .populate("role", "nombre slug")
+      .populate("estadoUsuario", "nombre");
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+    res.json(user);
+  } catch {
+    res.status(500).json({ error: "Error actualizando avatar" });
+  }
+};
+
+export const updateDniUrl = async (req, res) => {
+  try {
+    const { dniUrl } = req.body;
+    if (!dniUrl) return res.status(400).json({ error: "Falta dniUrl" });
+
+    const user = await User.findByIdAndUpdate(req.user.id, { dniUrl }, { new: true })
+      .populate("role", "nombre slug")
+      .populate("estadoUsuario", "nombre");
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+    res.json(user);
+  } catch {
+    res.status(500).json({ error: "Error actualizando dniUrl" });
+  }
+};
+
+export const cambiarEstadoUsuario = async (req, res) => {
+  try {
+    const { estadoId } = req.body; // nuevo ObjectId de estadousuario
+
+    if (!estadoId) {
+      return res.status(400).json({ error: "Se requiere estadoId" });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { estadoUsuario: estadoId },
+      { new: true, runValidators: true }
+    ).populate("estadoUsuario", "nombre");
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    res.json({
+      message: "Estado actualizado correctamente",
+      user,
+    });
+  } catch (err) {
+    console.error("Error en cambiarEstadoUsuario:", err);
+    res.status(500).json({ error: "No se pudo cambiar estado" });
+  }
+};
+

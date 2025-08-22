@@ -11,22 +11,29 @@ import DashboardEjecutives from "./pages/DashboardEjecutives";
 import Ventas from "./pages/Ventas";
 import Navbar from "./components/Navbar";
 
-// Definimos qué roles pueden ver ventas
-const ROLES_VENTAS = [
-  "sistemas",
-  "administracion",
-  "backoffice",
-  "postventa",
-  "recursoshumanos",
-  "gerencia",
-  "supervisorcomercial",
-];
+const ROLES_IDS = {
+  sistemas: "68a4f22d27e6abe98157a82c",
+  administracion: "68a4f22d27e6abe98157a82d",
+  recursoshumanos: "68a4f22d27e6abe98157a82e",
+  gerencia: "68a4f22d27e6abe98157a82f",
+  backoffice: "68a4f22d27e6abe98157a830",
+  comercial: "68a4f22d27e6abe98157a831",
+  supervisorcomercial: "68a4f22d27e6abe98157a832",
+};
 
-
-const ProtectedRoute = ({ children, roles }) => {
+const ProtectedRoute = ({ children, roleIds }) => {
   const user = JSON.parse(localStorage.getItem("user"));
   if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+
+  const userRoleId =
+    typeof user.role === "string"
+      ? user.role
+      : user.role?._id || "";
+
+  if (roleIds && !roleIds.includes(userRoleId)) {
+    return <Navigate to="/" replace />;
+  }
+
   return children;
 };
 
@@ -38,7 +45,6 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Home />} />
 
-        {/* Otras rutas protegidas */}
         <Route
           path="/cuenta"
           element={
@@ -48,63 +54,105 @@ export default function App() {
           }
         />
 
+        {/* Ventas: solo Back Office */}
         <Route
           path="/ventas"
           element={
-            <ProtectedRoute roles={["backoffice"]}>
+            <ProtectedRoute roleIds={[ROLES_IDS.backoffice]}>
               <Ventas />
             </ProtectedRoute>
           }
         />
-        
-        {/* Ruta de Usuarios sólo para sistemas */}
+
+        {/* Usuarios: solo Sistemas */}
         <Route
           path="/users"
           element={
-            <ProtectedRoute roles={["sistemas"]}>
+            <ProtectedRoute roleIds={[ROLES_IDS.sistemas]}>
               <Users />
             </ProtectedRoute>
           }
         />
-        
- <Route
-    path="/Historical"
-    element={
-      <ProtectedRoute roles={ROLES_VENTAS}>
-      
-        <Historical />
-      </ProtectedRoute>
-    }
-  />
-  <Route
-    path="/DashboardEjecutives"
-    element={
-      <ProtectedRoute roles={ROLES_VENTAS}>
-        <DashboardEjecutives />
-      </ProtectedRoute>
-    }
-  />
 
-  {/* Ventas: accesibles para varios roles */}
-  <Route
-    path="/HistoricalSales"
-    element={
-      <ProtectedRoute roles={ROLES_VENTAS}>
-        <HistoricalSales />
-      </ProtectedRoute>
-    }
-  />
-  <Route
-    path="/DashboardSales"
-    element={
-      <ProtectedRoute roles={ROLES_VENTAS}>
-        <DashboardSales />
-      </ProtectedRoute>
-    }
-  />
-  <Route path="*" element={<Navigate to="/" replace />} />
-</Routes>
+        {/* Reportes por varios roles */}
+        <Route
+          path="/Historical"
+          element={
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.administracion,
+                ROLES_IDS.backoffice,
+                ROLES_IDS.postventa,
+                ROLES_IDS.recursoshumanos,
+                ROLES_IDS.gerencia,
+                ROLES_IDS.supervisorcomercial,
+              ]}
+            >
+              <Historical />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/DashboardEjecutives"
+          element={
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.administracion,
+                ROLES_IDS.backoffice,
+                ROLES_IDS.postventa,
+                ROLES_IDS.recursoshumanos,
+                ROLES_IDS.gerencia,
+                ROLES_IDS.supervisorcomercial,
+              ]}
+            >
+              <DashboardEjecutives />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/HistoricalSales"
+          element={
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.administracion,
+                ROLES_IDS.backoffice,
+                ROLES_IDS.postventa,
+                ROLES_IDS.recursoshumanos,
+                ROLES_IDS.gerencia,
+                ROLES_IDS.supervisorcomercial,
+              ]}
+            >
+              <HistoricalSales />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/DashboardSales"
+          element={
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.administracion,
+                ROLES_IDS.backoffice,
+                ROLES_IDS.postventa,
+                ROLES_IDS.recursoshumanos,
+                ROLES_IDS.gerencia,
+                ROLES_IDS.supervisorcomercial,
+              ]}
+            >
+              <DashboardSales />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </Router>
   );
-
 }

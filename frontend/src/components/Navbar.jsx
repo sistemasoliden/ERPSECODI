@@ -9,20 +9,18 @@ export default function Navbar() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showReportMenu, setShowReportMenu] = useState(false);
 
-  const ROLES_REPORTES = [
-    "administracion",
-    "backoffice",
-    "postventa",
-    "recursoshumanos",
-    "sistemas",
-    "gerencia",
-    "comercial",
-  ];
+// IDs de roles que pueden ver Reporte de Ventas
+const ROLES_REPORTES = [
+  "68a4f22d27e6abe98157a82c", // Sistemas
+  "68a4f22d27e6abe98157a82f", // Gerencia
+];
 
-  const canSeeReportsMenu =
-    user?.role && ROLES_REPORTES.includes(user.role);
+const userRoleId = user?.role?._id || user?.role;
 
-  const isSistemas = user?.role === "sistemas";
+const canSeeReportsMenu = userRoleId && ROLES_REPORTES.includes(userRoleId);
+
+const SISTEMAS_ROLE_ID = "68a4f22d27e6abe98157a82c";
+const isSistemas = userRoleId === SISTEMAS_ROLE_ID;
 
 
   const userMenuRef = useRef(null);
@@ -89,57 +87,53 @@ export default function Navbar() {
 
 
         {/* Dropdown Reportes/Ventas */}
-        {canSeeReportsMenu && (
-          <div className="relative" ref={reportMenuRef}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowReportMenu((prev) => !prev);
-              }}
-              className="text-sm hover:text-gray-300 transition"
-            >
-              Reporte de Ventas
-              
-            </button>
+{canSeeReportsMenu && (
+  <div className="relative" ref={reportMenuRef}>
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        setShowReportMenu((prev) => !prev);
+      }}
+      className="text-sm hover:text-gray-300 transition"
+    >
+      Reporte de Ventas
+    </button>
 
-            {showReportMenu && (
-<div className="absolute left-1/2 transform -translate-x-1/2 mt-2 w-52 bg-white text-black rounded-lg shadow-xl z-50 overflow-hidden animate-fade-in-down">
- 
-                {/* Opciones comunes */}
-                <Link
-                  to="/HistoricalSales"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
-                  onClick={() => setShowReportMenu(false)}
-                >
-                  Histórico Ventas
-                </Link>
-                <Link
-                  to="/DashboardSales"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
-                  onClick={() => setShowReportMenu(false)}
-                >
-                  Dashboard Ventas
-                </Link>
-                    <Link
-                      to="/Historical"
-                      className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
-                      onClick={() => setShowReportMenu(false)}
-                    >
-                      Histórico de Ejecutivos
-                    </Link>
-                    <Link
-                      to="/DashboardEjecutives"
-                      className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
-                      onClick={() => setShowReportMenu(false)}
-                    >
-                      Dashboard Ejecutivos
-                    </Link>
-                 
-              </div>
-            )}
-          </div>
-        )}
+    {showReportMenu && (
+      <div className="absolute left-1/2 transform -translate-x-1/2 mt-2 w-52 bg-white text-black rounded-lg shadow-xl z-50 overflow-hidden animate-fade-in-down">
+        <Link
+          to="/HistoricalSales"
+          className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+          onClick={() => setShowReportMenu(false)}
+        >
+          Histórico Ventas
+        </Link>
+        <Link
+          to="/DashboardSales"
+          className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+          onClick={() => setShowReportMenu(false)}
+        >
+          Dashboard Ventas
+        </Link>
+        <Link
+          to="/Historical"
+          className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+          onClick={() => setShowReportMenu(false)}
+        >
+          Histórico de Ejecutivos
+        </Link>
+        <Link
+          to="/DashboardEjecutives"
+          className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+          onClick={() => setShowReportMenu(false)}
+        >
+          Dashboard Ejecutivos
+        </Link>
+      </div>
+    )}
+  </div>
+)}
 
         {/* Punto adicional solo para backoffice */}
 

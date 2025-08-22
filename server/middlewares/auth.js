@@ -1,25 +1,17 @@
-// server/middlewares/auth.js
+// backend/middleware/auth.js
 import jwt from 'jsonwebtoken';
 
-// Verifica que haya un token válido
-export function verifyToken(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ message: 'No token' });
-
-  const token = authHeader.split(' ')[1];
+export const verifyToken = (req, res, next) => {
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload;
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (!token) return res.status(401).json({ error: 'No token provided' });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // asume que en el token pusiste { id: user._id, ... }
+    req.user = { id: decoded.id };
     next();
   } catch (err) {
-    return res.status(403).json({ message: 'Token inválido' });
+    return res.status(401).json({ error: 'Token inválido' });
   }
-}
-
-// Comprueba que el rol sea "sistemas"
-export function isAdmin(req, res, next) {
-  if (!req.user || req.user.role !== 'sistemas') {
-    return res.status(403).json({ message: 'Acceso denegado' });
-  }
-  next();
-}
+};

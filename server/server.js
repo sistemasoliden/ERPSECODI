@@ -9,6 +9,15 @@ import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import ventasRoutes from "./routes/ventasRoutes.js";
 import ejecutivesRoutes from "./routes/ejecutivesRoutes.js";
+// Registra modelos referenciados por populate
+import "./models/RolUsuario.js";
+import "./models/EstadoUsuario.js";
+
+import rolesUsuariosRoutes from "./routes/rolesUsuariosRoutes.js";
+import estadosUsuarioRoutes from "./routes/estadosUsuarioRoutes.js";
+
+// Tu modelo User ya está importado desde los controladores o rutas.
+
 
 dotenv.config();
 
@@ -31,6 +40,8 @@ app.use("/api/users", userRoutes);
 app.use("/api/ventas", ventasRoutes);
 app.use("/api/ejecutivos", ejecutivesRoutes);
 
+app.use("/api/rolesusuarios", rolesUsuariosRoutes);
+app.use("/api/estadosusuario", estadosUsuarioRoutes);
 
 // 👉 Servir frontend (solo en producción)
 const __filename = fileURLToPath(import.meta.url);
