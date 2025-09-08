@@ -15,6 +15,17 @@ import "./models/EstadoUsuario.js";
 
 import rolesUsuariosRoutes from "./routes/rolesUsuariosRoutes.js";
 import estadosUsuarioRoutes from "./routes/estadosUsuarioRoutes.js";
+import equipoRoutes from "./routes/equiposRoutes.js";
+import baseSecodiRoutes from "./routes/baseSecodiRoutes.js";
+import estadoVentaRoutes from "./routes/estadoVentaRoutes.js";
+import tiposVentasRoutes from "./routes/tiposVentasRoutes.js";
+import productosRoutes from "./routes/productosRoutes.js";
+import modalidadVentaRoutes from "./routes/modalidadVentaRoutes.js";
+import consultorRegistradoRoutes from "./routes/consultorRegistradoRoutes.js";
+import segmentoEmpresaRoutes from "./routes/segmentoEmpresaRoutes.js";
+import ventasActivacionRoutes from "./routes/ventasActivacionRoutes.js";
+import opportunityRoutes from "./routes/opportunityRoutes.js";
+
 
 // Tu modelo User ya está importado desde los controladores o rutas.
 
@@ -42,7 +53,21 @@ app.use("/api/ejecutivos", ejecutivesRoutes);
 
 app.use("/api/rolesusuarios", rolesUsuariosRoutes);
 app.use("/api/estadosusuario", estadosUsuarioRoutes);
+app.use("/api/equipos", equipoRoutes);
+app.use("/api/basesecodi", baseSecodiRoutes);
+app.use("/api/estadosventa", estadoVentaRoutes);
 
+app.use("/api/tiposventas", tiposVentasRoutes);
+app.use("/api/productos", productosRoutes);
+app.use("/api/modalidadventa", modalidadVentaRoutes);
+app.use("/api/consultorregistrado", consultorRegistradoRoutes);
+app.use("/api/segmentoempresa", segmentoEmpresaRoutes);
+
+// ...
+app.use("/api/oportunidades", opportunityRoutes);
+
+
+app.use("/api/ventas", ventasActivacionRoutes);
 // 👉 Servir frontend (solo en producción)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

@@ -1,718 +1,383 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
-import api from "@/api/axios";
-import { ChevronDown, Search } from "lucide-react";
+// src/pages/ReportVentasConsultores.jsx
+import React, { useEffect, useState } from "react";
+import api from "../api/axios";
+import { Loader } from "../components/Loader";
+import FiltrosWrapper from "../components/FiltrosWrapper";
+import { ChevronDown } from "lucide-react";
 
-const MESES_COMPLETOS = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
-];
-const MONTH_ORDER = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
+const buildParams = (obj) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (!v || (Array.isArray(v) && v.length === 0)) continue;
+    if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+    else p.append(k, v);
+  }
+  return p;
+};
+
+const MONTH_NAMES = [
+  "Enero","Febrero","Marzo","Abril","Mayo","Junio",
+  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre",
 ];
 
-export default function DashboardVentas() {
-  const [productoSeleccionado, setProductoSeleccionado] = useState("Todos");
+const fmtNumber = (n, decimals = 0) =>
+  new Intl.NumberFormat("es-PE", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(Number(n || 0));
 
-  const [estadoSeleccionado, setEstadoSeleccionado] = useState("");
-  const [filtrarPDV, setFiltrarPDV] = useState(false);
-  const [dataConsultores, setDataConsultores] = useState([]);
-  const [dataOriginalCompleta, setDataOriginalCompleta] = useState([]);
-  const [estadosDisponibles, setEstadosDisponibles] = useState([]);
-
-  const [expandedYears, setExpandedYears] = useState({});
-  const [expandedMonths, setExpandedMonths] = useState({});
-  const [consultoresDisponibles, setConsultoresDisponibles] = useState([]);
-  const [consultoresSeleccionados, setConsultoresSeleccionados] = useState([]);
-  const [showConsultorDropdown, setShowConsultorDropdown] = useState(false);
-  const consultorDropdownRef = useRef(null);
-  const [expandedConsultores, setExpandedConsultores] = useState({});
-
-  const [filtroMeses, setFiltroMeses] = useState([]);
-  const [showMesDropdown, setShowMesDropdown] = useState(false);
-  const [añosOriginales, setAñosOriginales] = useState([]);
-  const [añoSeleccionado, setAñoSeleccionado] = useState("");
-  const [loading, setLoading] = useState(true);
-  const mesDropdownRef = useRef(null);
-  const firstLoadRef = useRef(true);
-
-  const [consultorSearch, setConsultorSearch] = useState("");
-
-  const normalize = (s = "") =>
-    s
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
-  const consultoresFiltrados = useMemo(
-    () =>
-      consultoresDisponibles.filter((c) =>
-        normalize(c).includes(normalize(consultorSearch))
-      ),
-    [consultoresDisponibles, consultorSearch]
-  );
-
-  const toggleConsultor = (nombre) =>
-    setConsultoresSeleccionados((prev) =>
-      prev.includes(nombre)
-        ? prev.filter((n) => n !== nombre)
-        : [...prev, nombre]
-    );
-
-  const seleccionarTodosFiltrados = () =>
-    setConsultoresSeleccionados((prev) => [
-      ...new Set([...prev, ...consultoresFiltrados]),
-    ]);
-
-  const limpiarSeleccion = () => setConsultoresSeleccionados([]);
-
-  const formatoSoles = new Intl.NumberFormat("es-PE", {
+const fmtPEN = (n) =>
+  new Intl.NumberFormat("es-PE", {
     style: "currency",
     currency: "PEN",
     minimumFractionDigits: 2,
-  });
+  }).format(Number(n || 0));
 
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (
-        consultorDropdownRef.current &&
-        !consultorDropdownRef.current.contains(event.target)
-      ) {
-        setShowConsultorDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
+// ===== helpers sumas =====
+const sumArray = (arr = []) =>
+  arr.reduce(
+    (acc, r) => {
+      acc.cf += Number(r.totalCF || 0);
+      acc.q += Number(r.Q || 0);
+      return acc;
+    },
+    { cf: 0, q: 0 }
+  );
 
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (
-        mesDropdownRef.current &&
-        !mesDropdownRef.current.contains(event.target)
-      ) {
-        setShowMesDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
+const getProdTotals = (grouped, y, m, c, t, p) =>
+  sumArray(grouped?.[y]?.[m]?.[c]?.[t]?.[p] || []);
 
-  useEffect(() => {
-    const params = {};
-    if (añoSeleccionado) params.año = añoSeleccionado;
-    if (filtroMeses.length > 0) {
-      params.meses = filtroMeses
-        .map((m) => MESES_COMPLETOS.indexOf(m) + 1)
-        .join(",");
-    }
-    if (estadoSeleccionado) params.estadoFinal = estadoSeleccionado;
-    if (productoSeleccionado !== "Todos")
-      params.producto = productoSeleccionado;
-    if (filtrarPDV) params.conPDV = true;
+const getTipoTotals = (grouped, y, m, c, t) =>
+  Object.values(grouped?.[y]?.[m]?.[c]?.[t] || {}).reduce(
+    (acc, arr) => {
+      const s = sumArray(arr);
+      acc.cf += s.cf;
+      acc.q += s.q;
+      return acc;
+    },
+    { cf: 0, q: 0 }
+  );
 
-    api
-      .get("ejecutivos/consultores-disponibles", { params })
-      .then((res) => {
-        setConsultoresDisponibles(res.data);
-      })
-      .catch((err) => {
-        console.error("❌ Error al cargar consultores:", err);
-      });
-  }, [
-    añoSeleccionado,
-    filtroMeses,
-    estadoSeleccionado,
-    productoSeleccionado,
-    filtrarPDV,
-  ]);
-
-  useEffect(() => {
-    api
-      .get("/ventas/estados")
-      .then((res) => {
-        const estadosLimpiados = res.data
-          .filter(
-            (e) =>
-              typeof e === "string" &&
-              e.trim() !== "" &&
-              e.toLowerCase() !== "null"
-          )
-          .map((e) => e.trim().toUpperCase());
-        setEstadosDisponibles([...new Set(estadosLimpiados)]);
-      })
-      .catch((err) => console.error("❌ Error al cargar estados:", err));
-  }, []);
-
-  useEffect(() => {
-    api.get("/ejecutivos/consultorestabla").then((res) => {
-      setDataOriginalCompleta(res.data);
-
-      const añosUnicos = [
-        ...new Set(res.data.map((item) => item.year).filter(Boolean)),
-      ].sort((a, b) => a - b);
-
-      setAñosOriginales(añosUnicos);
-    });
-  }, []);
-
-  useEffect(() => {
-    const params = {};
-    if (añoSeleccionado) params.año = añoSeleccionado;
-    if (filtroMeses.length > 0) {
-      const mesesNumeros = filtroMeses.map(
-        (m) => MESES_COMPLETOS.indexOf(m) + 1
+const getConsultorTotals = (grouped, y, m, c) =>
+  Object.values(grouped?.[y]?.[m]?.[c] || {}).reduce(
+    (acc, prodObjByTipo) => {
+      const s = Object.values(prodObjByTipo).reduce(
+        (inner, arr) => {
+          const s2 = sumArray(arr);
+          inner.cf += s2.cf;
+          inner.q += s2.q;
+          return inner;
+        },
+        { cf: 0, q: 0 }
       );
-      params.meses = mesesNumeros;
-    }
-    if (estadoSeleccionado) params.estadoFinal = estadoSeleccionado;
-    if (productoSeleccionado !== "Todos")
-      params.producto = productoSeleccionado;
-    if (filtrarPDV) params.conPDV = true;
-    if (consultoresSeleccionados.length > 0) {
-      params.consultor = consultoresSeleccionados.join(",");
-    }
+      acc.cf += s.cf;
+      acc.q += s.q;
+      return acc;
+    },
+    { cf: 0, q: 0 }
+  );
 
-    // 👇 Solo mostramos el overlay en la PRIMERA carga
-    const shouldShowLoader = firstLoadRef.current;
-    if (shouldShowLoader) setLoading(true);
+const getMonthTotals = (grouped, y, m) =>
+  Object.values(grouped?.[y]?.[m] || {}).reduce(
+    (acc, tiposByConsultor) => {
+      const s = Object.values(tiposByConsultor).reduce(
+        (inner, prodObjByTipo) => {
+          // prodObjByTipo = { [producto]: [rows] }
+          const s2 = Object.values(prodObjByTipo).reduce(
+            (inner2, arr) => {
+              const s3 = sumArray(arr);
+              inner2.cf += s3.cf;
+              inner2.q += s3.q;
+              return inner2;
+            },
+            { cf: 0, q: 0 }
+          );
+          inner.cf += s2.cf;
+          inner.q += s2.q;
+          return inner;
+        },
+        { cf: 0, q: 0 }
+      );
+      acc.cf += s.cf;
+      acc.q += s.q;
+      return acc;
+    },
+    { cf: 0, q: 0 }
+  );
 
-    api
-      .get("/ejecutivos/consultorestabla", { params })
-      .then((res) => {
-        setDataConsultores(res.data);
-        setDataOriginalCompleta(res.data);
-      })
-      .catch((err) =>
-        console.error("❌ Error al cargar datos de consultores:", err)
-      )
-      .finally(() => {
-        if (shouldShowLoader) {
-          setLoading(false);
-          firstLoadRef.current = false; // ✅ a partir de aquí, no volverá a mostrar overlay
-        }
-      });
-  }, [
-    añoSeleccionado,
-    filtroMeses,
-    estadoSeleccionado,
-    productoSeleccionado,
-    filtrarPDV,
-    consultoresSeleccionados,
-  ]);
+export default function ReportVentasConsultores() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const productosDisponibles = [
-    ...new Set(dataOriginalCompleta.map((d) => d.tipoV)),
-  ].sort();
-  const toggleYear = (year) => {
-    setExpandedYears((prev) => ({
-      ...prev,
-      [year]: !(prev[year] ?? true), // si no existe, se asume true
-    }));
-  };
+  // estados de expandido
+  const [expandedYears, setExpandedYears] = useState({});
+  const [expandedMonths, setExpandedMonths] = useState({});
+  const [expandedConsultores, setExpandedConsultores] = useState({});
+  const [expandedTipos, setExpandedTipos] = useState({});
+  const [filtros, setFiltros] = useState({});
 
-  const toggleMonth = (year, mes) => {
-    const key = `${year}-${mes}`;
-    setExpandedMonths((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const params = buildParams({
+          estado: filtros.estado,
+          year: filtros.anio,
+          month: filtros.mes,
+          consultor: filtros.consultor,      // 👈 si tu FiltrosWrapper lo expone
+          producto: filtros.producto,
+          tipoVenta: filtros.tipoVenta,
+          pdv: filtros.soloPdv ? "si" : undefined,
+        });
 
+        const { data: res } = await api.get("/ventas/tablaconsultores", { params });
+        setData(res || []);
+
+        // Apertura inicial: año actual y mes actual
+        const yExp = {}, mExp = {}, cExp = {}, tExp = {};
+        const currentYear = new Date().getFullYear();
+        const currentMonth = MONTH_NAMES[new Date().getMonth()];
+
+        (res || []).forEach((r) => {
+          const y = r.year;
+          const m = MONTH_NAMES[(r.month ?? 1) - 1];
+
+          yExp[y] = y === currentYear;
+          if (y === currentYear && m === currentMonth) {
+            mExp[`${y}-${m}`] = true;
+          }
+        });
+
+        setExpandedYears(yExp);
+        setExpandedMonths(mExp);
+        setExpandedConsultores(cExp);
+        setExpandedTipos(tExp);
+      } catch (e) {
+        console.error("❌ Error cargando:", e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [filtros]);
+
+  // Agrupación: Año > Mes > Consultor > Tipo > Producto
   const grouped = {};
-  dataConsultores
-    .filter((item) => {
-      if (filtroMeses.length === 0) return true;
-      const mesNombre = MESES_COMPLETOS[item.month - 1];
-      return filtroMeses.includes(mesNombre);
-    })
-    .forEach((item) => {
-      const { year, month, consultor, tipoV, totalCF, totalQ } = item;
-      if (!grouped[year]) grouped[year] = {};
-      if (!grouped[year][month]) grouped[year][month] = {};
-      if (!grouped[year][month][consultor])
-        grouped[year][month][consultor] = [];
-      grouped[year][month][consultor].push({ tipoV, totalCF, totalQ });
-    });
+  for (const r of data) {
+    const year = r.year;
+    const monthName = MONTH_NAMES[(r.month ?? 1) - 1];
+    const c = r.consultor || "—";
+    grouped[year] ??= {};
+    grouped[year][monthName] ??= {};
+    grouped[year][monthName][c] ??= {};
+    grouped[year][monthName][c][r.tipo] ??= {};
+    grouped[year][monthName][c][r.tipo][r.producto] ??= [];
+    grouped[year][monthName][c][r.tipo][r.producto].push(r);
+  }
 
-  const handleMesChange = (mes) => {
-    setFiltroMeses((prev) =>
-      prev.includes(mes) ? prev.filter((m) => m !== mes) : [...prev, mes]
-    );
-  };
-
-  const years = Object.keys(grouped).sort((a, b) => a - b);
+  const toggleYear = (y) => setExpandedYears((p) => ({ ...p, [y]: !p[y] }));
+  const toggleMonth = (y, m) =>
+    setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
+  const toggleConsultor = (y, m, c) =>
+    setExpandedConsultores((p) => ({
+      ...p,
+      [`${y}-${m}-${c}`]: !p[`${y}-${m}-${c}`],
+    }));
+  const toggleTipo = (y, m, c, t) =>
+    setExpandedTipos((p) => ({
+      ...p,
+      [`${y}-${m}-${c}-${t}`]: !p[`${y}-${m}-${c}-${t}`],
+    }));
 
   return (
-    <div className="relative mt-6 w-full max-w-7xl mx-auto px-20 pb-5">
-      <h2 className="text-1xl font-bold mb-4 text-black dark:text-white font-['IBM Plex Sans']">
-        REPORTE DE VENTAS
-      </h2>
+    <div className="min-h-[calc(100vh-88px)] bg-gray-200 dark:bg-slate-950 p-4 md:p-6">
+      {loading && (
+        <Loader variant="fullscreen" message="Cargando ventas…" navbarHeight={88} />
+      )}
 
-      {/* Filtros */}
-      <div className="flex flex-wrap items-end gap-4 mb-6">
-        {/* Estado */}
-        <div className="flex flex-col">
-          <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-            Estado
-          </label>
-          <select
-            value={estadoSeleccionado}
-            onChange={(e) => setEstadoSeleccionado(e.target.value)}
-            className="border border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-xs px-2 py-2 text-neutral-800 dark:text-white w-24"
-          >
-            <option value="">Todos</option>
-            {estadosDisponibles.map((estado) => (
-              <option key={estado} value={estado}>
-                {estado}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Año */}
-        <div className="flex flex-col">
-          <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-            Año
-          </label>
-          <select
-            value={añoSeleccionado}
-            onChange={(e) => setAñoSeleccionado(e.target.value)}
-            className="border border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-xs px-2 py-2 text-neutral-800 dark:text-white w-24"
-          >
-            <option value="">Todos</option>
-            {añosOriginales.map((año) => (
-              <option key={año} value={año}>
-                {año}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Mes */}
-        <div className="flex flex-col relative" ref={mesDropdownRef}>
-          <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-            {" "}
-            Mes{" "}
-          </label>
-          <button
-            type="button"
-            onClick={() => setShowMesDropdown((prev) => !prev)}
-            className="border border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-xs px-2 py-2 text-neutral-800 dark:text-white w-36 text-left focus:outline-none focus:ring-1 focus:ring-blue-800"
-          >
-            {filtroMeses.length > 0
-              ? `${filtroMeses.length} seleccionados`
-              : "Seleccionar"}
-          </button>
-          {showMesDropdown && (
-            <div className="absolute left-1/2 -translate-x-1/2 mt-12 w-32 border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 shadow z-10 max-h-60 overflow-auto">
-              {MESES_COMPLETOS.map((mes) => (
-                <label
-                  key={mes}
-                  className="flex items-center px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-xs text-neutral-800 dark:text-white"
-                >
-                  <input
-                    type="checkbox"
-                    checked={filtroMeses.includes(mes)}
-                    onChange={() => handleMesChange(mes)}
-                    className="mr-2 accent-blue-800"
-                  />
-                  {mes.charAt(0).toUpperCase() + mes.slice(1)}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Consultores */}
-        {/* Consultores */}
-        <div className="flex flex-col relative" ref={consultorDropdownRef}>
-          <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-            Consultor
-          </label>
-
-          <button
-            type="button"
-            onClick={() => setShowConsultorDropdown((prev) => !prev)}
-            className="border border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-xs px-2 py-2 text-neutral-800 dark:text-white w-48 text-left focus:outline-none focus:ring-1 focus:ring-blue-800 whitespace-nowrap overflow-hidden text-ellipsis truncate"
-          >
-            {consultoresSeleccionados.length === 0
-              ? "Seleccionar"
-              : consultoresSeleccionados.length === 1
-              ? consultoresSeleccionados[0]
-                  .toLowerCase()
-                  .replace(/\b\w/g, (l) => l.toUpperCase())
-              : `${consultoresSeleccionados.length} seleccionados`}
-          </button>
-
-          {showConsultorDropdown && (
-            <div className="absolute left-1/2 -translate-x-1/2 mt-12 w-56 border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 shadow z-10 max-h-72 overflow-auto rounded">
-              {/* Buscar */}
-              <div className="sticky top-0 bg-white dark:bg-neutral-800 p-2 border-b border-neutral-200 dark:border-neutral-700">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-2 top-2.5 text-neutral-400" />
-                  <input
-                    value={consultorSearch}
-                    onChange={(e) => setConsultorSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "Enter" &&
-                        consultoresFiltrados.length > 0
-                      ) {
-                        toggleConsultor(consultoresFiltrados[0]);
-                      }
-                    }}
-                    placeholder="Buscar consultor..."
-                    className="w-full pl-7 pr-6 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-800 rounded"
-                    autoFocus
-                  />
-                  {consultorSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setConsultorSearch("")}
-                      className="absolute right-2 top-2 text-neutral-400 hover:text-neutral-600"
-                      aria-label="Limpiar búsqueda"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-
-                {/* Acciones rápidas */}
-                <div className="mt-2 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={seleccionarTodosFiltrados}
-                    className="text-[11px] px-2 py-1 border border-neutral-300 dark:border-neutral-600 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                    title="Selecciona todos los resultados filtrados"
-                  >
-                    Seleccionar filtrados
-                  </button>
-                  <button
-                    type="button"
-                    onClick={limpiarSeleccion}
-                    className="text-[11px] px-2 py-1 border border-neutral-300 dark:border-neutral-600 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                    title="Limpia la selección"
-                  >
-                    Limpiar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowConsultorDropdown(false)}
-                    className="ml-auto text-[11px] px-2 py-1 border border-blue-800 text-blue-800 rounded hover:bg-blue-50"
-                  >
-                    Aplicar
-                  </button>
-                </div>
-              </div>
-
-              {/* Lista */}
-              {consultoresFiltrados.length === 0 ? (
-                <div className="px-2 py-2 text-xs text-neutral-500 dark:text-neutral-400">
-                  Sin resultados
-                </div>
-              ) : (
-                consultoresFiltrados.map((consultor) => (
-                  <label
-                    key={consultor}
-                    className="flex items-center px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-xs text-neutral-800 dark:text-white"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={consultoresSeleccionados.includes(consultor)}
-                      onChange={() => toggleConsultor(consultor)}
-                      className="mr-2 accent-blue-800"
-                    />
-                    {consultor
-                      .toLowerCase()
-                      .replace(/\b\w/g, (l) => l.toUpperCase())}
-                  </label>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Producto */}
-        <div className="flex flex-col">
-          <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-            Producto
-          </label>
-          <select
-            value={productoSeleccionado}
-            onChange={(e) => setProductoSeleccionado(e.target.value)}
-            className="border border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-xs px-2 py-2 text-neutral-800 dark:text-white w-24"
-          >
-            <option value="Todos">Todos</option>
-            {productosDisponibles.map((producto) => (
-              <option key={producto} value={producto}>
-                {producto
-                  ? producto
-                      .toLowerCase()
-                      .replace(/\b\w/g, (c) => c.toUpperCase())
-                  : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* PDV */}
-        <div className="flex flex-col">
-          <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-            PDV
-          </label>
-          <button
-            onClick={() => setFiltrarPDV((prev) => !prev)}
-            className={`text-xs px-3 py-2 border rounded-none transition ${
-              filtrarPDV
-                ? "bg-blue-800 text-white"
-                : "border-black dark:border-neutral-600 text-black dark:text-white bg-white dark:bg-neutral-800"
-            }`}
-          >
-            {filtrarPDV ? "Con PDV" : "Solo con PDV"}
-          </button>
-        </div>
-
-        {/* Borrar filtros */}
-        <div className="flex flex-col justify-end">
-          <button
-            onClick={() => {
-              setAñoSeleccionado("");
-              setFiltroMeses([]);
-              setProductoSeleccionado("Todos");
-              setConsultoresSeleccionados([]);
-              setEstadoSeleccionado("");
-              setFiltrarPDV(false);
-            }}
-            className="flex items-center gap-2 text-xs px-3 py-2 border border-red-800 text-red-800 hover:bg-red-100 dark:hover:bg-red-900 rounded-none"
-            title="Borrar todos los filtros"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3m5 0H6"
-              />
-            </svg>
-            Borrar filtros
-          </button>
-        </div>
+      {/* Filtros arriba */}
+      <div className="relative z-30 -mt-4 px-6">
+        <FiltrosWrapper>
+          {(f) => {
+            if (JSON.stringify(f) !== JSON.stringify(filtros)) {
+              setTimeout(() => setFiltros(f), 0);
+            }
+            return <div className="h-0 overflow-hidden" />;
+          }}
+        </FiltrosWrapper>
       </div>
 
       {/* Tabla */}
+      <div className="mt-4 overflow-hidden border border-slate-200 bg-white/70 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/60 relative">
+        <div className="relative overflow-x-auto">
+          <table className="w-full table-fixed text-xs">
+            <thead className="bg-gradient-to-r from-gray-100 to-gray-200 dark:from-slate-800 dark:to-slate-700 text-gray-700 dark:text-gray-200 capitalize text-xs font-semibold">
+              <tr>
+                <th className="w-[16.6%] px-4 py-2 text-center">Año</th>
+                <th className="w-[16.6%] px-4 py-2 text-center">Mes</th>
+                <th className="w-[16.6%] px-4 py-2 text-center">Consultor</th>
+                <th className="w-[16.6%] px-4 py-2 text-center">Tipo</th>
+                <th className="w-[16.6%] px-4 py-2 text-center">Producto</th>
+                <th className="w-[16.6%] px-4 py-2 text-center">CF</th>
+                <th className="w-[16.6%] px-4 py-2 text-center">Q</th>
+              </tr>
+            </thead>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm text-neutral-800 dark:text-neutral-100 font-['IBM Plex Sans']">
-          <thead className="bg-neutral-100 dark:bg-neutral-800 text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400 border-b border-neutral-300 dark:border-neutral-700">
-            <tr>
-              <th className="w-1/6 py-3 px-4 text-xs text-center">Año</th>
-              <th className="w-1/6 py-3 px-4 text-xs text-center">Mes</th>
-              <th className="w-1/6 py-3 px-4 text-xs text-center">Consultor</th>
-              <th className="w-1/6 py-3 px-4 text-xs text-center">Producto</th>
-              <th className="w-1/6 py-3 px-4 text-xs text-center">
-                CF sin IGV
-              </th>
-              <th className="w-1/6 py-3 px-4 text-xs text-center">
-                Q de líneas
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {years.map((year) => {
-              const isYearOpen = expandedYears[year] ?? true; // abierto por defecto
-
-              return (
-                <React.Fragment key={year}>
-                  <tr
-                    className="cursor-pointer bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700"
-                    onClick={() => toggleYear(year)}
-                  >
-                    <td
-                      colSpan={6}
-                      className="w-1/6 bg-neutral-600 text-white text-xs text-left py-2 px-12 font-bold"
+            <tbody className="divide-y divide-gray-200 dark:divide-slate-800 text-center">
+              {Object.keys(grouped)
+                .sort((a, b) => b - a)
+                .map((year) => (
+                  <React.Fragment key={year}>
+                    {/* Año */}
+                    <tr
+                      className="bg-red-900 text-white cursor-pointer hover:bg-red-600 transition"
+                      onClick={() => toggleYear(year)}
                     >
-                      <ChevronDown
-                        className={`inline mr-4 w-4 h-4 transition-transform ${
-                          isYearOpen ? "rotate-180" : ""
-                        }`}
-                      />
-                      {year}
-                    </td>
-                  </tr>
+                      <td className="px-4 py-2 font-bold tracking-wide text-center text-xs">
+                        <ChevronDown
+                          className={`inline w-3 h-3 mr-2 transition-transform duration-300 ${expandedYears[year] ? "rotate-180" : ""}`}
+                        />
+                        {year}
+                      </td>
+                      <td colSpan={6}></td>
+                    </tr>
 
-                  {isYearOpen &&
-                    Object.keys(grouped[year]).map((mes) => {
-                      const ventasDelMes = Object.values(
-                        grouped[year][mes]
-                      ).flat();
-                      const totalCFMes = ventasDelMes.reduce(
-                        (acc, v) => acc + (v.totalCF || 0),
-                        0
-                      );
-                      const totalQMes = ventasDelMes.reduce(
-                        (acc, v) => acc + (v.totalQ || v.Q || 0),
-                        0
-                      );
-                      const isMonthExpanded =
-                        expandedMonths[`${year}-${mes}`] ?? false;
+                    {/* Mes */}
+                    {expandedYears[year] &&
+                      Object.keys(grouped[year])
+                        .sort((a, b) => MONTH_NAMES.indexOf(b) - MONTH_NAMES.indexOf(a))
+                        .map((month) => {
+                          const mSum = getMonthTotals(grouped, year, month);
+                          return (
+                            <React.Fragment key={month}>
+                              <tr
+                                className="bg-gray-100 dark:bg-slate-800 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 transition"
+                                onClick={() => toggleMonth(year, month)}
+                              >
+                                <td></td>
+                                <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">
+                                  <div className="flex items-center gap-2 pl-8">
+                                    <ChevronDown
+                                      className={`w-4 h-4 transition-transform duration-300 ${expandedMonths[`${year}-${month}`] ? "rotate-180" : ""}`}
+                                    />
+                                    <span>{month}</span>
+                                  </div>
+                                </td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td className="px-4 py-2 font-semibold text-red-800">{fmtPEN(mSum.cf)}</td>
+                                <td className="px-4 py-2 font-semibold text-red-800">{fmtNumber(mSum.q, 0)}</td>
+                              </tr>
 
-                      return (
-                        <React.Fragment key={`${year}-${mes}`}>
-                          <tr
-                            className="cursor-pointer even:bg-white odd:bg-neutral-200 dark:even:bg-neutral-800 hover:bg-blue-50 dark:hover:bg-neutral-700"
-                            onClick={() => toggleMonth(year, mes)}
-                          >
-                            <td></td>
-                            <td className="w-1/7 py-2 px-4 text-xs font-medium text-black dark:text-white capitalize">
-                              <div className="flex items-center gap-2 ps-6">
-                                <ChevronDown
-                                  className={`inline mr-4 w-4 h-4 transition-transform ${
-                                    isMonthExpanded ? "rotate-180" : ""
-                                  }`}
-                                />
-                                {MESES_COMPLETOS[mes - 1]}
-                              </div>
-                            </td>
-                            <td></td>
-                            <td></td>
-                            <td className="text-center py-2 px-4 text-xs font-semibold text-black dark:text-white">
-                              {formatoSoles.format(totalCFMes)}
-                            </td>
-                            <td className="text-center py-2 px-4 text-xs font-semibold text-black dark:text-white">
-                              {totalQMes}
-                            </td>
-                          </tr>
+                              {/* Consultor */}
+                              {expandedMonths[`${year}-${month}`] &&
+                                Object.keys(grouped[year][month])
+                                  .sort((a, b) => a.localeCompare(b))
+                                  .map((consultor) => {
+                                    const cKey = `${year}-${month}-${consultor}`;
+                                    const cSum = getConsultorTotals(grouped, year, month, consultor);
 
-                          {isMonthExpanded &&
-                            Object.entries(grouped[year][mes]).map(
-                              ([consultor, ventas]) => {
-                                const totalCF = ventas.reduce(
-                                  (acc, v) => acc + (v.totalCF || 0),
-                                  0
-                                );
-                                const totalQ = ventas.reduce(
-                                  (acc, v) => acc + (v.totalQ || v.Q || 0),
-                                  0
-                                );
-                                const key = `${year}-${mes}-${consultor}`;
-                                const isExpanded =
-                                  expandedConsultores[key] ?? false;
-
-                                return (
-                                  <React.Fragment key={key}>
-                                    <tr
-                                      className="cursor-pointer border-b border-neutral-300 dark:border-neutral-600 even:bg-white odd:bg-neutral-50 dark:odd:bg-neutral-700 transition-colors"
-                                      onClick={() =>
-                                        setExpandedConsultores((prev) => ({
-                                          ...prev,
-                                          [key]: !prev[key],
-                                        }))
-                                      }
-                                    >
-                                      <td colSpan={2}></td>
-                                      <td className="text-xs font-semibold text-left py-2 px-4 text-black dark:text-white max-w-[160px]">
-                                        <div className="flex items-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis">
-                                          <ChevronDown
-                                            className={`w-4 h-4 shrink-0 transition-transform ${
-                                              isExpanded ? "rotate-180" : ""
-                                            }`}
-                                          />
-                                          <span className="capitalize truncate">
-                                            {consultor
-                                              .toLowerCase()
-                                              .replace(/\b\w/g, (c) =>
-                                                c.toUpperCase()
-                                              )}
-                                          </span>
-                                        </div>
-                                      </td>
-                                      <td></td>
-                                      <td className="text-center py-2 px-4 text-xs text-black dark:text-white">
-                                        {formatoSoles.format(totalCF)}
-                                      </td>
-                                      <td className="text-center py-2 px-4 text-xs text-black dark:text-white">
-                                        {totalQ}
-                                      </td>
-                                    </tr>
-
-                                    {isExpanded &&
-                                      ventas.map((v, i) => (
+                                    return (
+                                      <React.Fragment key={consultor}>
                                         <tr
-                                          key={i}
-                                          className="bg-white dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700"
+                                          className="bg-white dark:bg-slate-900 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800"
+                                          onClick={() => toggleConsultor(year, month, consultor)}
                                         >
-                                          <td colSpan={3}></td>
-                                          <td className="text-center font-semibold py-2 px-4 text-xs text-black dark:text-white">
-                                            {v.tipoV
-                                              ? v.tipoV
-                                                  .toLowerCase()
-                                                  .replace(/\b\w/g, (c) =>
-                                                    c.toUpperCase()
-                                                  )
-                                              : ""}
-                                          </td>
-                                          <td className="text-center py-2 px-4 text-xs text-black dark:text-white">
-                                            {formatoSoles.format(v.totalCF)}
-                                          </td>
-                                          <td className="text-center py-2 px-4 text-xs text-black dark:text-white">
-                                            {v.totalQ}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                  </React.Fragment>
-                                );
-                              }
-                            )}
-                        </React.Fragment>
-                      );
-                    })}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                                          <td></td>
+                                          <td></td>
+                                          <td className="px-4 py-2 font-semibold text-gray-700 dark:text-gray-200">
+                                            <div className="flex items-center gap-2 pl-6">
+  <ChevronDown
+    className={`w-4 h-4 transition-transform duration-300 ${expandedConsultores[cKey] ? "rotate-180" : ""}`}
+  />
+  <span className="whitespace-nowrap overflow-hidden text-ellipsis">
+    {consultor}
+  </span>
+</div>
 
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-neutral-900 z-49 text-center">
-          <div className="flex flex-col items-center translate-y-28">
-            {/* Círculo animado */}
-            <div className="flex flex-col items-center justify-center py-40 text-center text-black dark:text-white">
-        <div className="animate-spin rounded-full h-14 w-14 border-t-4 border-blue-500 border-solid mb-4"></div>
-        <p className="text-base font-semibold">
-          Cargando datos, por favor espera...
-        </p>
-      </div>
-          </div>
+                                          </td>
+                                          <td></td>
+                                          <td></td>
+                                          <td className="px-4 py-2 text-xs font-semibold text-green-800">{fmtPEN(cSum.cf)}</td>
+                                          <td className="px-4 py-2 text-xs font-semibold text-green-800">{fmtNumber(cSum.q, 0)}</td>
+                                        </tr>
+
+                                        {/* Tipo */}
+                                        {expandedConsultores[cKey] &&
+                                          Object.keys(grouped[year][month][consultor]).map((tipo) => {
+                                            const tKey = `${year}-${month}-${consultor}-${tipo}`;
+                                            const tSum = getTipoTotals(grouped, year, month, consultor, tipo);
+
+                                            return (
+                                              <React.Fragment key={tipo}>
+                                                <tr
+                                                  className="bg-gray-50 dark:bg-slate-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
+                                                  onClick={() => toggleTipo(year, month, consultor, tipo)}
+                                                >
+                                                  <td></td>
+                                                  <td></td>
+                                                  <td></td>
+                                                  <td className="px-4 py-2 font-medium text-gray-700 dark:text-gray-200">
+                                                    <div className="flex items-center gap-2 pl-8">
+                                                      <ChevronDown
+                                                        className={`w-4 h-4 transition-transform duration-300 ${expandedTipos[tKey] ? "rotate-180" : ""}`}
+                                                      />
+                                                      <span>{tipo}</span>
+                                                    </div>
+                                                  </td>
+                                                  <td></td>
+                                                  <td className="px-4 py-2 text-xs font-semibold text-slate-800">
+                                                    {fmtPEN(tSum.cf)}
+                                                  </td>
+                                                  <td className="px-4 py-2 text-xs font-semibold text-slate-800">
+                                                    {fmtNumber(tSum.q, 0)}
+                                                  </td>
+                                                </tr>
+
+                                                {/* Producto */}
+                                                {expandedTipos[tKey] &&
+                                                  Object.keys(grouped[year][month][consultor][tipo]).map((prod) => {
+                                                    const pSum = getProdTotals(grouped, year, month, consultor, tipo, prod);
+                                                    return (
+                                                      <tr
+                                                        key={prod}
+                                                        className="bg-white dark:bg-slate-900 hover:bg-gray-50 dark:hover:bg-slate-800"
+                                                      >
+                                                        <td></td>
+                                                        <td></td>
+                                                        <td></td>
+                                                        <td></td>
+                                                        <td className="px-4 py-2 text-gray-700 dark:text-gray-200 text-center">
+                                                          {prod}
+                                                        </td>
+                                                        <td className="px-4 py-2 text-xs">{fmtPEN(pSum.cf)}</td>
+                                                        <td className="px-4 py-2 text-xs">{fmtNumber(pSum.q, 0)}</td>
+                                                      </tr>
+                                                    );
+                                                  })}
+                                              </React.Fragment>
+                                            );
+                                          })}
+                                      </React.Fragment>
+                                    );
+                                  })}
+                            </React.Fragment>
+                          );
+                        })}
+                  </React.Fragment>
+                ))}
+
+              {data.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="text-center py-6 text-gray-500">
+                    🚫 Sin resultados
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
     </div>
   );
 }

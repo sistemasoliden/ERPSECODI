@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
 
-const ventaSchema = new mongoose.Schema({}, { strict: false, collection: "ventas" });
+const VentaSchema = new mongoose.Schema({}, { strict: false, collection: "ventas" });
 
-export default mongoose.model("Venta", ventaSchema);
+export default mongoose.model("Venta", VentaSchema);

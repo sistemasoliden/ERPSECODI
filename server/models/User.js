@@ -45,7 +45,15 @@ const userSchema = new mongoose.Schema({
     lowercase: true
   },
 
-  password: { type: String, required: true, minlength: 6 },
+  password: {
+  type: String,
+  required: function () {
+    // Solo requerir en creación
+    return this.isNew;
+  },
+  minlength: 6,
+},
+
 
   role: {
     type: mongoose.Schema.Types.ObjectId,
@@ -87,6 +95,13 @@ const userSchema = new mongoose.Schema({
     ref: "estadousuario",
     required: true
   },
+    // === Equipo ===
+  equipo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "EquipoSecodi", // <- nombre del model definido arriba
+    default: null,
+  },
+ 
 
   avatar: { type: String, default: "" },
   lastLogin: { type: Date },
@@ -101,7 +116,9 @@ const userSchema = new mongoose.Schema({
     }
   },
   toObject: { virtuals: true }
+  
 });
+
 
 // Virtual "fullName"
 userSchema.virtual("fullName").get(function () {

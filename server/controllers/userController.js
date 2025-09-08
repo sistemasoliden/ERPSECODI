@@ -16,6 +16,24 @@ export const listUsers = async (_req, res) => {
   }
 };
 
+// Solo usuarios activos
+export const listActiveUsers = async (_req, res) => {
+  try {
+    const ESTADO_ACTIVO_ID = new mongoose.Types.ObjectId("68a4f3dc27e6abe98157a845"); // 👈 ID de "Activo"
+
+    const users = await User.find({ estadoUsuario: ESTADO_ACTIVO_ID })
+      .populate("role", "nombre slug")
+      .populate("estadoUsuario", "nombre")
+      .lean();
+
+    res.json(users);
+  } catch (e) {
+    console.error("listActiveUsers error:", e);
+    res.status(500).json({ error: "Error listando usuarios activos", detail: e.message });
+  }
+};
+
+
 export const getUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
@@ -66,31 +84,26 @@ export const updateUser = async (req, res) => {
     const { id } = req.params;
     const body = { ...req.body };
 
-    // No permitir cambiar password aquí
     delete body.password;
-
-    // No permitir setear orgEmail manualmente
     delete body.orgEmail;
 
-    if (typeof body.role === "string" && mongoose.Types.ObjectId.isValid(body.role)) {
-      body.role = new mongoose.Types.ObjectId(body.role);
-    }
-    if (typeof body.estadoUsuario === "string" && mongoose.Types.ObjectId.isValid(body.estadoUsuario)) {
-      body.estadoUsuario = new mongoose.Types.ObjectId(body.estadoUsuario);
-    }
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: "No encontrado" });
 
-    // Si cambian firstName/lastName, el pre('validate') del modelo se encargará
-    // de recalcular name y orgEmail únicos
-    const user = await User.findByIdAndUpdate(id, body, { new: true, runValidators: true })
+    Object.assign(user, body);
+    await user.save(); // 👈 esto dispara pre("validate") y regenera orgEmail
+
+    const populated = await User.findById(user._id)
       .populate("role", "nombre slug")
       .populate("estadoUsuario", "nombre");
 
-    if (!user) return res.status(404).json({ error: "No encontrado" });
-    res.json(user);
-  } catch {
+    res.json(populated);
+  } catch (e) {
+    console.error(e);
     res.status(400).json({ error: "Error actualizando usuario" });
   }
 };
+
 
 export const deleteUser = async (req, res) => {
   try {
@@ -161,3 +174,62 @@ export const cambiarEstadoUsuario = async (req, res) => {
   }
 };
 
+export const resetPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
+    }
+
+    const bcrypt = (await import("bcryptjs")).default;
+    const salt = await bcrypt.genSalt(10);
+    const hashed = await bcrypt.hash(newPassword, salt);
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { password: hashed },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    res.json({ message: "Contraseña actualizada correctamente" });
+  } catch (e) {
+    console.error("resetPassword error:", e);
+    res.status(500).json({ error: "Error actualizando contraseña" });
+  }
+};
+
+
+export const asignarEquipo = async (req, res) => {
+  try {
+    const { id } = req.params;           // userId
+    const { equipoId } = req.body;       // ObjectId del equipo o null
+
+    const user = await User.findById(id).populate("role", "name");
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    // Solo permitir a roles Comercial o Supervisor Comercial
+    const roleName = (user.role?.name || "").toLowerCase();
+    const ok = roleName === "comercial" || roleName === "supervisor comercial";
+    if (!ok) {
+      return res.status(400).json({ error: "Este usuario no es Comercial ni Supervisor Comercial" });
+    }
+
+    user.equipo = equipoId || null;
+    await user.save();
+
+    const populated = await User.findById(user._id)
+      .populate("equipo", "name")
+      .populate("role", "name");
+
+    res.json({ message: "Equipo asignado", user: populated });
+  } catch (e) {
+    console.error("asignarEquipo error:", e);
+    res.status(400).json({ error: "No se pudo asignar equipo" });
+  }
+};

@@ -1,1486 +1,1200 @@
-import React, { useEffect, useState } from "react";
-import api from "@/api/axios";
+// src/pages/TestFiltros.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import { Loader } from "../components/Loader";
+import api from "../api/axios";
+import FiltrosWrapper from "../components/FiltrosWrapper";
 import {
   LineChart,
   Line,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
   CartesianGrid,
+  Tooltip,
   Legend,
-  LabelList,
+  ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
   BarChart,
   Bar,
-  ComposedChart,
+  LabelList,
   ReferenceLine,
+  ComposedChart,
 } from "recharts";
 
-const MESES_COMPLETOS = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
+const PIE_COLORS = [
+  "#2563eb", // Azul intenso
+  "#dc2626", // Rojo elegante
+  "#16a34a", // Verde vibrante
+  "#f59e0b", // Ámbar cálido
+  "#9333ea", // Púrpura llamativo
 ];
 
-const MONTHS_SHORT = [
-  "ene",
-  "feb",
-  "mar",
-  "abr",
-  "may",
-  "jun",
-  "jul",
-  "ago",
-  "sep",
-  "oct",
-  "nov",
-  "dic",
-];
+/* ---------- Tooltips personalizados que muestran Q y CF ---------- */
+const PieDualTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
+  const p = payload[0]?.payload || {};
+  return (
+    <div className="rounded-md border bg-white px-3 py-2 text-xs shadow">
+      <div className="font-semibold mb-1">{p._id}</div>
+      <div>
+        Q: <b>{new Intl.NumberFormat("es-PE").format(p.totalQ ?? 0)}</b>
+      </div>
+      <div>
+        CF:{" "}
+        <b>
+          {new Intl.NumberFormat("es-PE", {
+            style: "currency",
+            currency: "PEN",
+            maximumFractionDigits: 0,
+          }).format(p.totalCF ?? 0)}
+        </b>
+      </div>
+    </div>
+  );
+};
 
-const formatoSoles = new Intl.NumberFormat("es-PE", {
-  style: "currency",
-  currency: "PEN",
-  minimumFractionDigits: 2,
-});
+const BarDualTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
+  const p = payload[0]?.payload || {};
+  const fmtInt = (v) => new Intl.NumberFormat("es-PE").format(v ?? 0);
+  const fmtMoney = (v) =>
+    new Intl.NumberFormat("es-PE", {
+      style: "currency",
+      currency: "PEN",
+      maximumFractionDigits: 0,
+    }).format(v ?? 0);
 
-export default function DashboardVentas() {
-  const [dataOriginal, setDataOriginal] = useState([]);
-  const [dataFiltrada, setDataFiltrada] = useState([]);
-  const [añoSeleccionado, setAñoSeleccionado] = useState("");
-  const [productoSeleccionado, setProductoSeleccionado] = useState("Todos");
-  const [mesSeleccionado, setMesSeleccionado] = useState("");
-  const [pdvSeleccionado, setPdvSeleccionado] = useState("");
-  const [estadoSeleccionado, setEstadoSeleccionado] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [dataSegmentos, setDataSegmentos] = useState([]);
-  const [tipoDato, setTipoDato] = useState("CF");
-  const [añosDisponibles, setAñosDisponibles] = useState([]);
-  const [todosLosProductos, setTodosLosProductos] = useState([]);
-  const [filtrarPDV, setFiltrarPDV] = useState(false);
-  const [dataEstadosDona, setDataEstadosDona] = useState([]);
-  const [dataTipoProductos, setDataTipoProductos] = useState([]);
-  const [tipoSeleccionado, setTipoSeleccionado] = useState(null);
-  const [dataPDV, setDataPDV] = useState([]);
+  return (
+    <div className="rounded-md border bg-white px-3 py-2 text-xs shadow">
+      <div className="font-semibold mb-1">{p.name}</div>
+      <div>
+        Q: <b>{fmtInt(p.totalQ)}</b>
+      </div>
+      <div>
+        CF: <b>{fmtMoney(p.totalCF)}</b>
+      </div>
+    </div>
+  );
+};
 
-  const [vista, setVista] = useState("mes");
+const PdvDualTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
+  const p = payload[0]?.payload || {};
+  return (
+    <div className="rounded-md border bg-white px-3 py-2 text-xs shadow">
+      <div className="font-semibold mb-1">{p._id}</div>
+      <div>
+        Q: <b>{new Intl.NumberFormat("es-PE").format(p.totalQ ?? 0)}</b>
+      </div>
+      <div>
+        CF:{" "}
+        <b>
+          {new Intl.NumberFormat("es-PE", {
+            style: "currency",
+            currency: "PEN",
+            maximumFractionDigits: 0,
+          }).format(p.totalCF ?? 0)}
+        </b>
+      </div>
+    </div>
+  );
+};
 
-  // Ya existente
-  const [dataComparativa, setDataComparativa] = useState([]);
+/* ---------- Componente interno para sincronizar filtros sin setState en render ---------- */
+const SyncFiltros = ({ value, onChange, children }) => {
+  const prevStr = React.useRef("");
+  React.useEffect(() => {
+    const nextStr = JSON.stringify(value || {});
+    if (nextStr !== prevStr.current) {
+      prevStr.current = nextStr;
+      onChange(value);
+    }
+  }, [value, onChange]);
+  return children;
+};
 
-  // ✅ Nuevo estado para vista mensual/trimestral sin chocar
-  const [tipoVistaComparativa, setTipoVistaComparativa] = useState("anual"); // anual | mes | trimestre
+const abreviarEtiqueta = (v) => {
+  if (!v) return "";
+  let s = String(v);
+
+  s = s.replace(/Portabilidad Entel/gi, "Port. Entel");
+  s = s.replace(/Portabilidad Movistar/gi, "Port. Mov.");
+  s = s.replace(/Portabilidad Bitel/gi, "Port. Bitel");
+  s = s.replace(/Portabilidad Claro/gi, "Port. Claro");
+  s = s.replace(/Portabilidad Win/gi, "Port. Win");
+  s = s.replace(/Lineas Adicionales/gi, "Lín. Add.");
+  s = s.replace(/Líneas Adicionales/gi, "Lín. Add.");
+  s = s.replace(/Upselling/gi, "Ups.");
+  s = s.replace(/Renovacion/gi, "Renov.");
+  s = s.replace(/Renovación/gi, "Renov.");
+  s = s.replace(/Retencion/gi, "Ret.");
+  s = s.replace(/Retención/gi, "Ret.");
+  s = s.replace(/Alta Nueva/gi, "Alta N.");
+  s = s.replace(/Baja/gi, "Baja");
+  s = s.replace(/\s+/g, " ").trim();
+  if (s.length > 12) s = s.slice(0, 12) + "…";
+  return s;
+};
+
+/* === Helper clave: construir params con arrays repetidos === */
+const buildParams = (obj) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v === undefined || v === null || v === "") continue;
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;
+      v.forEach((item) => {
+        if (item !== undefined && item !== null && item !== "")
+          p.append(k, item);
+      });
+    } else {
+      p.append(k, v);
+    }
+  }
+  return p;
+};
+
+export default function DashboardComparativas() {
+  const [filtros, setFiltros] = useState({});
+  const [tipoVistaComparativa, setTipoVistaComparativa] = useState("anual");
   const [mesComparativa, setMesComparativa] = useState(
     new Date().getMonth() + 1
   );
   const [trimestreComparativa, setTrimestreComparativa] = useState(1);
+  const [dataComparativa, setDataComparativa] = useState([]);
+  const [dataMesVsYTD, setDataMesVsYTD] = useState(null);
+  const [vista, setVista] = useState("mes");
 
-  const [dataMesVsYTD, setDataMesVsYTD] = useState({
-    chart: [],
-    mes: { Q: 0, CF: 0 },
-    ytd: { Q: 0, CF: 0 },
-  });
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-  api.get("/ventas/comparativa", {
-    params: {
-      // Solo modo 2: por tipo/mes/trimestre
-      tipo: tipoVistaComparativa, // "anual" | "mes" | "trimestre"
-      mes: tipoVistaComparativa === "mes" ? mesComparativa : undefined,
-      trimestre: tipoVistaComparativa === "trimestre" ? trimestreComparativa : undefined,
+  // Estado → torta
+  const [distEstado, setDistEstado] = useState([]);
 
-      // Filtros
-      productos: productoSeleccionado !== "Todos" ? productoSeleccionado : undefined, // string o array
-      pdv: pdvSeleccionado || undefined,                                               // string o array
-      estadoFinal: estadoSeleccionado || undefined,                                    // string o array
-      conPDV: filtrarPDV ? "true" : undefined,                                          // enviar STRING
-    },
-  })
-  .then((res) => setDataComparativa(res.data.comparativa))
-  .catch((err) => console.error("❌ Error al cargar comparativa de ventas:", err));
-}, [
-  tipoVistaComparativa,
-  mesComparativa,
-  trimestreComparativa,
-  productoSeleccionado,
-  pdvSeleccionado,
-  estadoSeleccionado,
-  filtrarPDV,
-]);
+  // Barras (tipo de venta / drilldown)
+  const [tipoSeleccionado] = useState(null);
+  const [barData, setBarData] = useState([]);
+  const [barLoading] = useState(false);
 
+  // Dona PDV
+  const [distPDV, setDistPDV] = useState([]);
+  const firstRender = React.useRef(true);
+  // Info de fecha actual
+  const todayInfo = useMemo(() => {
+    const now = new Date();
+    const day = now.getDate();
+    const daysInMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0
+    ).getDate();
+    const monthIndex = now.getMonth() + 1;
+    return { day, daysInMonth, monthIndex };
+  }, []);
 
+  // Proyección de FIN DE MES (si API no la trae, la calculo con ratio de días)
+  const proyMes = useMemo(() => {
+    const api = dataMesVsYTD?.proy || {};
+    const byDays = (v) =>
+      v == null
+        ? null
+        : Math.round((v / Math.max(1, todayInfo.day)) * todayInfo.daysInMonth);
+    return {
+      Q: typeof api.Q === "number" ? api.Q : byDays(dataMesVsYTD?.mes?.Q),
+      CF: typeof api.CF === "number" ? api.CF : byDays(dataMesVsYTD?.mes?.CF),
+    };
+  }, [dataMesVsYTD, todayInfo]);
 
-  const tituloComparativa =
-    tipoVistaComparativa === "anual"
-      ? "Comparativa Anual Q y CF"
-      : tipoVistaComparativa === "mes"
-      ? `Comparativa Mensual Q y CF (${
-          [
-            "Enero",
-            "Febrero",
-            "Marzo",
-            "Abril",
-            "Mayo",
-            "Junio",
-            "Julio",
-            "Agosto",
-            "Septiembre",
-            "Octubre",
-            "Noviembre",
-            "Diciembre",
-          ][mesComparativa - 1]
-        })`
-      : `Comparativa Trimestral Q y CF (T${trimestreComparativa})`;
+  // Proyección de FIN DE AÑO (si API no la trae, anualizo por meses transcurridos)
+  const proyAnual = useMemo(() => {
+    const api = dataMesVsYTD?.proyYtd || {};
+    const byMonths = (v) =>
+      v == null
+        ? null
+        : Math.round((v / Math.max(1, todayInfo.monthIndex)) * 12);
+    return {
+      Q: typeof api.Q === "number" ? api.Q : byMonths(dataMesVsYTD?.ytd?.Q),
+      CF: typeof api.CF === "number" ? api.CF : byMonths(dataMesVsYTD?.ytd?.CF),
+    };
+  }, [dataMesVsYTD, todayInfo]);
 
-  useEffect(() => {
-    api
-      .get("/ventas/pdv", {
-        params: {
-          año: añoSeleccionado || undefined,
-          meses: mesSeleccionado || undefined,
-          productos:
-            productoSeleccionado !== "Todos" ? productoSeleccionado : undefined,
-          pdv: pdvSeleccionado || undefined,
-          estadoFinal: estadoSeleccionado || undefined, // 👈 si quieres que respete el filtro
-          conPDV: filtrarPDV ? "true" : undefined, // 👈 ENVÍA STRING, no boolean
-        },
-      })
-      .then((res) => setDataPDV(res.data))
-      .catch((err) =>
-        console.error("❌ Error al cargar el gráfico de PDV:", err)
-      );
-  }, [
-    añoSeleccionado,
-    mesSeleccionado,
-    productoSeleccionado,
-    pdvSeleccionado,
-    estadoSeleccionado, // 👈 agrega si filtras por estado
-    filtrarPDV,
-  ]);
+  // Asegura que las ReferenceLine entren en el gráfico
 
- useEffect(() => {
-  const mesParam =
-    mesSeleccionado && Number(mesSeleccionado) >= 1 && Number(mesSeleccionado) <= 12
-      ? Number(mesSeleccionado)
-      : undefined;
-
-  api
-    .get("/ventas/estados/conteo", {
-      params: {
-        año: añoSeleccionado || undefined,
-        mes: mesParam,
-        producto: productoSeleccionado !== "Todos" ? productoSeleccionado : undefined, // se interpreta como TIPO_V
-        pdv: pdvSeleccionado || undefined,
-        estadoFinal: estadoSeleccionado || undefined,   // 👈 ahora sí lo envías
-        conPDV: filtrarPDV ? "true" : undefined,        // enviar STRING si está activo
-      },
-    })
-    .then((res) => setDataEstadosDona(res.data))
-    .catch((err) => console.error("❌ Error al cargar el gráfico de estados:", err));
-}, [
-  añoSeleccionado,
-  mesSeleccionado,
-  productoSeleccionado,
-  pdvSeleccionado,
-  estadoSeleccionado,   // 👈 agrégalo al array de dependencias
-  filtrarPDV,
-]);
+  const monthLabel = useMemo(
+    () => ({
+      "01": "Ene",
+      "02": "Feb",
+      "03": "Mar",
+      "04": "Abr",
+      "05": "May",
+      "06": "Jun",
+      "07": "Jul",
+      "08": "Ago",
+      "09": "Sep",
+      10: "Oct",
+      11: "Nov",
+      12: "Dic",
+    }),
+    []
+  );
 
   useEffect(() => {
-    api
-      .get("/ventas/productos")
-      .then((res) => {
-        const productosUnicos = [
-          ...new Set(res.data.map((d) => d.producto)),
-        ].sort();
-        setTodosLosProductos(productosUnicos);
-
-        // También: establecer años disponibles si no lo haces ya
-        const años = [...new Set(res.data.map((d) => d.year))].sort(
-          (a, b) => a - b
-        );
-        setAñosDisponibles(años.map(String));
-      })
-      .catch((err) => console.error("❌ Error al cargar productos:", err));
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+    window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
   useEffect(() => {
-    api
-      .get("/ventas/segmentos", {
-        params: {
-          año: añoSeleccionado,
-          producto: productoSeleccionado,
-          estadoFinal: estadoSeleccionado,
-          mes: mesSeleccionado,
-          pdv: pdvSeleccionado || undefined,
-          conPDV: filtrarPDV,
-        },
-      })
-      .then((res) => setDataSegmentos(res.data))
-      .catch((err) => console.error("❌ Error al cargar segmentos:", err));
-  }, [
-    añoSeleccionado,
-    productoSeleccionado,
-    estadoSeleccionado,
-    mesSeleccionado,
-    pdvSeleccionado,
-    filtrarPDV,
-  ]);
+    if (loading) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [loading]);
 
+  // Líneas
+  // 🚀 1 solo useEffect que carga todo en paralelo
   useEffect(() => {
-    setLoading(true);
-    api
-      .get("/ventas/productos", {
-        params: {
-          estadoFinal: estadoSeleccionado || undefined,
-          año: añoSeleccionado,
-          productos:
-            productoSeleccionado !== "Todos" ? productoSeleccionado : undefined,
-          meses: mesSeleccionado || undefined,
-          pdv: pdvSeleccionado || undefined,
-          conPDV: filtrarPDV,
-        },
-      })
-      .then((res) => {
-        // Normaliza los estados a mayúsculas sin espacios
-        const datosNormalizados = res.data.map((d) => ({
-          ...d,
-          estado: d.estado?.trim().toUpperCase() || "",
-        }));
-        setDataOriginal(datosNormalizados);
-      })
+    const fetchAll = async () => {
+      try {
+        setLoading(true);
 
-      .catch((err) => console.error("❌ Error al cargar datos:", err))
-      .finally(() => setLoading(false));
-  }, [
-    estadoSeleccionado,
-    añoSeleccionado,
-    productoSeleccionado,
-    mesSeleccionado,
-    pdvSeleccionado,
-    filtrarPDV,
-  ]);
+        const params = buildParams({
+          estado: filtros.estado,
+          year: filtros.anio,
+          month: filtros.mes,
+          producto: filtros.producto,
+          tipoVenta: filtros.tipoVenta,
+          pdv: filtros.soloPdv ? "si" : "",
+        });
 
-  useEffect(() => {
-    api
-      .get("/ventas/tipos-productos", {
-        params: {
-          año: añoSeleccionado,
-          mes: mesSeleccionado || undefined,
-          producto:
-            productoSeleccionado !== "Todos" ? productoSeleccionado : undefined,
-          estadoFinal: estadoSeleccionado || undefined,
-          pdv: pdvSeleccionado || undefined,
-          conPDV: filtrarPDV,
-        },
-      })
-      .then((res) => setDataTipoProductos(res.data))
-      .catch((err) =>
-        console.error("❌ Error al obtener tipos-productos:", err)
-      );
-  }, [
-    añoSeleccionado,
-    mesSeleccionado,
-    productoSeleccionado,
-    estadoSeleccionado,
-    pdvSeleccionado,
-    filtrarPDV,
-  ]);
+        const [
+          resLineas,
+          resEstado,
+          resTipoVenta,
+          resPdv,
+          resComparativa,
+          resMesVsYtd,
+        ] = await Promise.all([
+          api.get("/ventas/graficolineas", { params }),
+          api.get("/ventas/distribucion-estado", { params }),
+          api.get("/ventas/distribucion-tipo-venta", { params }),
+          api.get("/ventas/distribucion-pdv", { params }),
+          api.get("/ventas/comparativa", { params }),
+          api.get("/ventas/mes-vs-ytd", { params }),
+        ]);
 
-  const [estadosDisponibles, setEstadosDisponibles] = useState([]);
+        setData(resLineas.data?.data || []);
+        setDistEstado(resEstado.data?.data || []);
+        setBarData(resTipoVenta.data?.data || []);
+        setDistPDV(resPdv.data?.data || []);
+        setDataComparativa(resComparativa.data?.data || []);
+        setDataMesVsYTD(resMesVsYtd.data || null);
+      } catch (err) {
+        console.error("❌ Error cargando datos:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  useEffect(() => {
-    api
-      .get("/ventas/estados")
-      .then((res) => {
-        const estadosLimpiados = res.data
-          .filter(
-            (e) =>
-              typeof e === "string" &&
-              e.trim() !== "" &&
-              e.toLowerCase() !== "null"
-          )
-          .map((e) => e.trim().toUpperCase());
+    fetchAll();
+  }, [filtros, tipoSeleccionado]);
 
-        setEstadosDisponibles([...new Set(estadosLimpiados)]);
-      })
-      .catch((err) => console.error("❌ Error al cargar estados:", err));
-  }, []);
+  /* --------- Helpers --------- */
+  const fmtMoney = (v) =>
+    new Intl.NumberFormat("es-PE", {
+      style: "currency",
+      currency: "PEN",
+      maximumFractionDigits: 0,
+    }).format(v ?? 0);
+  const fmtInt = (v) => new Intl.NumberFormat("es-PE").format(v ?? 0);
 
-  useEffect(() => {
-    api
-      .get("/ventas/mes-vs-ytd", {
-        params: {
-          año: añoSeleccionado || undefined,
-          mes: mesSeleccionado || undefined,
-          producto:
-            productoSeleccionado !== "Todos" ? productoSeleccionado : undefined,
-          pdv: pdvSeleccionado || undefined,
-          estadoFinal: estadoSeleccionado || undefined,
-          conPDV: filtrarPDV ? "true" : "false",
-        },
-      })
-      .then((res) => setDataMesVsYTD(res.data)) // guarda res.data.chart para el BarChart
-      .catch((err) => console.error("❌ Error Mes vs YTD:", err));
-  }, [
-    añoSeleccionado,
-    mesSeleccionado,
-    productoSeleccionado,
-    pdvSeleccionado,
-    estadoSeleccionado,
-    filtrarPDV,
-  ]);
+  const chartData = useMemo(
+    () => data.map((d) => ({ ...d, mesLabel: monthLabel[d.mes] || d.mes })),
+    [data, monthLabel]
+  );
 
-  useEffect(() => {
-    const filtrado = dataOriginal.filter(
-      (d) =>
-        (!añoSeleccionado || d.year === parseInt(añoSeleccionado)) &&
-        (productoSeleccionado === "Todos" ||
-          d.producto === productoSeleccionado) &&
-        (!mesSeleccionado || d.month === parseInt(mesSeleccionado)) &&
-        (!pdvSeleccionado || d.pdv === pdvSeleccionado)
+  // Tooltip para el gráfico Mes vs YTD (muestra MTD, YTD y Proyección)
+  // Tooltip MES vs YTD con MTD, YTD y Proyección (mes o año)
+  const MesVsYtdTooltip = ({
+    active,
+    payload,
+    data,
+    fmtInt,
+    fmtMoney,
+    vista,
+    proyMes,
+    proyAnual,
+  }) => {
+    if (!active || !payload || !payload.length) return null;
+
+    const serie = payload[0]?.payload?.name; // "Q" o "CF"
+    const isQ = serie === "Q";
+
+    const MTD = isQ ? data?.mes?.Q ?? 0 : data?.mes?.CF ?? 0;
+    const YTD = isQ ? data?.ytd?.Q ?? 0 : data?.ytd?.CF ?? 0;
+
+    // elige proyección según vista
+    const proySel =
+      vista === "mes"
+        ? isQ
+          ? proyMes?.Q
+          : proyMes?.CF
+        : isQ
+        ? proyAnual?.Q
+        : proyAnual?.CF;
+
+    const fmt = isQ ? fmtInt : fmtMoney;
+
+    return (
+      <div className="rounded-md border bg-white px-3 py-2 text-xs shadow">
+        <div className="mb-1 font-semibold">{serie}</div>
+        <div>
+          MTD: <b>{fmt(MTD)}</b>
+        </div>
+        <div>
+          YTD: <b>{fmt(YTD)}</b>
+        </div>
+        {typeof proySel === "number" && (
+          <div>
+            {vista === "mes" ? "Proyección mes" : "Proyección año"}:{" "}
+            <b>{fmt(proySel)}</b>
+          </div>
+        )}
+      </div>
     );
-
-    const agrupado = MONTHS_SHORT.map((mes, i) => {
-      const datosDelMes = filtrado.filter((d) => d.month === i + 1);
-      const totalCF = datosDelMes.reduce((acc, cur) => acc + cur.totalCF, 0);
-      const totalQ = datosDelMes.reduce((acc, cur) => acc + cur.Q, 0);
-      return {
-        name: mes,
-        CF: totalCF,
-        Q: totalQ,
-      };
-    });
-
-    setDataFiltrada(agrupado);
-  }, [
-    añoSeleccionado,
-    productoSeleccionado,
-    mesSeleccionado,
-    pdvSeleccionado,
-    estadoSeleccionado,
-    dataOriginal,
-  ]);
-
-  const datosMesSeleccionado = dataOriginal.filter(
-    (d) =>
-      (!añoSeleccionado || d.year === parseInt(añoSeleccionado)) &&
-      (productoSeleccionado === "Todos" ||
-        d.producto === productoSeleccionado) &&
-      (!mesSeleccionado || d.month === parseInt(mesSeleccionado)) &&
-      (!pdvSeleccionado || d.pdv === pdvSeleccionado)
-  );
-
-  const mesesDisponibles = Array.from({ length: 12 }, (_, i) => i + 1);
-  const totalCF = datosMesSeleccionado.reduce(
-    (acc, cur) => acc + cur.totalCF,
-    0
-  );
-  const totalQ = datosMesSeleccionado.reduce((acc, cur) => acc + cur.Q, 0);
-
-  const dataAgrupadaPorTipo = () => {
-    const agrupado = new Map();
-
-    dataTipoProductos.forEach((item) => {
-      const tipo = item.tipo?.trim().toUpperCase() || "SIN INFORMACIÓN";
-      agrupado.set(tipo, (agrupado.get(tipo) || 0) + item.total);
-    });
-
-    return Array.from(agrupado.entries()).map(([name, total]) => ({
-      name,
-      total,
-    }));
   };
 
-  const dataPorProducto = () => {
-    if (!tipoSeleccionado) return [];
-
-    return dataTipoProductos
-      .filter((item) => item.tipo?.trim().toUpperCase() === tipoSeleccionado)
-      .map((item) => ({
-        name: item.producto?.trim().toUpperCase() || "SIN PRODUCTO",
-        total: item.total,
-      }));
-  };
-
+  /* ============================== RETURN ============================== */
   return (
-    <div className="mt-6 w-full max-w-7xl mx-auto px-20 pb-5">
+    <div className="min-h-[calc(100vh-88px)] w-full bg-gray-200 dark:bg-slate-950 p-4 md:p-6">
+      {/* 🔹 Bloque de filtros (igual que Ventas.jsx) */}
+      <div className="relative z-30 -mt-4 px-6">
+        <FiltrosWrapper>
+          {(f) => (
+            <SyncFiltros value={f} onChange={setFiltros}>
+              <div className="h-0 overflow-hidden" />
+            </SyncFiltros>
+          )}
+        </FiltrosWrapper>
+      </div>
+      {/* 🔹 Loader / vacío */}
       {loading ? (
-        // 🔹 Loader global
-        <div className="flex flex-col items-center justify-center py-40 text-center text-black dark:text-white">
-          <div className="animate-spin rounded-full h-14 w-14 border-t-4 border-blue-500 border-solid mb-4"></div>
-          <p className="text-base font-semibold">
-            Cargando datos, por favor espera...
-          </p>
+        <Loader
+          variant="fullscreen"
+          message="Cargando datos…"
+          navbarHeight={88}
+        />
+      ) : data.length === 0 ? (
+        <div className="flex min-h-[60vh] items-center justify-center px-6">
+          <div className="text-center">
+            <div className="mb-3 text-3xl">📭</div>
+            <p className="text-sm text-slate-500">No hay datos para mostrar</p>
+          </div>
         </div>
       ) : (
-        <>
-          <h2 className="text-1xl font-bold mb-2 text-black dark:text-white font-['IBM Plex Sans']">
-            REPORTE DE VENTAS
-          </h2>
+        <div className="mx-auto max-w-7xl px-4 py-6">
+          {/* ====== LÍNEA: CF / Q ====== */}
 
-          <div className="flex flex-wrap items-end gap-4 mb-6">
-            {/* Estado Final */}
-            <div className="flex flex-col">
-              <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-                Estado
-              </label>
-              <select
-                value={estadoSeleccionado}
-                onChange={(e) => setEstadoSeleccionado(e.target.value)}
-                className="border border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-xs px-2 py-2 text-neutral-800 dark:text-white w-24 focus:outline-none focus:ring-1 focus:ring-blue-800"
-              >
-                <option value="">Todos</option>
-                {estadosDisponibles.map((estado) => (
-                  <option key={estado} value={estado}>
-                    {estado
-                      .toLowerCase()
-                      .split(" ")
-                      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-                      .join(" ")}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {/* Año */}
-            <div className="flex flex-col">
-              <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-                Año
-              </label>
-              <select
-                value={añoSeleccionado}
-                onChange={(e) => setAñoSeleccionado(e.target.value)}
-                className="border border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-xs px-2 py-2 text-neutral-800 dark:text-white w-24 focus:outline-none focus:ring-1 focus:ring-blue-800"
-              >
-                <option value="">Todos</option>
-                {añosDisponibles.map((año) => (
-                  <option key={año} value={año}>
-                    {año}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {/* Mes */}
-            <div className="flex flex-col">
-              <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-                Mes
-              </label>
-              <select
-                value={mesSeleccionado}
-                onChange={(e) => setMesSeleccionado(e.target.value)}
-                className="border border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-xs px-2 py-2 text-neutral-800 dark:text-white w-24 focus:outline-none focus:ring-1 focus:ring-blue-800"
-              >
-                <option value="">Todos</option>
-                {mesesDisponibles.map((mes) => (
-                  <option key={mes} value={mes}>
-                    {MESES_COMPLETOS[mes - 1]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {/* Producto */}
-            <div className="flex flex-col">
-              <label className="text-xs font-medium text-black dark:text-neutral-300 mb-1">
-                Producto
-              </label>
-              <select
-                value={productoSeleccionado}
-                onChange={(e) => setProductoSeleccionado(e.target.value)}
-                className="border border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-xs px-2 py-2 text-neutral-800 dark:text-white w-24 focus:outline-none focus:ring-1 focus:ring-blue-800"
-              >
-                <option value="Todos">Todos</option>
-                {todosLosProductos.map((p) => (
-                  <option key={p} value={p}>
-                    {p
-                      .toLowerCase()
-                      .split(" ")
-                      .map(
-                        (word) => word.charAt(0).toUpperCase() + word.slice(1)
-                      )
-                      .join(" ")}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {/* PDV */}
-            <div className="flex flex-col">
-              <label className="text-xs font-medium text-black dark:text-neutral-300 px-2 py-2 w-24 mb-1">
-                PDV
-              </label>
-              <button
-                onClick={() => setFiltrarPDV((prev) => !prev)}
-                className={
-                  "text-xs px-3 py-2 border rounded-none focus:outline-none transition " +
-                  (filtrarPDV
-                    ? "bg-blue-800 text-white"
-                    : "border-black dark:border-neutral-600 text-black dark:text-white bg-white dark:bg-neutral-800")
-                }
-              >
-                {filtrarPDV ? "Con PDV " : "Solo con PDV"}
-              </button>
-            </div>
-
-            <div className="flex flex-col justify-end">
-              <button
-                onClick={() => {
-                  setAñoSeleccionado("");
-                  setProductoSeleccionado("Todos");
-                  setMesSeleccionado("");
-                  setPdvSeleccionado("");
-                  setEstadoSeleccionado("");
-                  setFiltrarPDV(false);
-                }}
-                className="flex items-center gap-2 text-xs px-3 py-2 border border-red-800 text-red-800 hover:bg-red-100 dark:hover:bg-red-900 rounded-none focus:outline-none transition"
-                title="Borrar todos los filtros"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3m5 0H6"
-                  />
-                </svg>
-                Borrar filtros
-              </button>
-            </div>
-          </div>
-
-          {/* Tarjetas resumen */}
-          <div className="flex flex-col md:flex-row gap-4 md:justify-end w-full mb-6">
-            {/* Tarjetas resumen */}
-            <div className="grid grid-cols-1 items-center justify-center md:grid-cols-2 gap-4 w-full md:w-[36%] h-[100px]">
-              <div className="bg-white dark:bg-neutral-800 border border-neutral-300 shadow  p-6">
-                <h2 className="text-xs font-bold text-center text-black uppercase dark:text-neutral-300 mb-2">
-                  Total de CF
-                </h2>
-                <p className="text-xl text-center font-bold text-red-800 dark:text-blue-400">
-                  {formatoSoles.format(totalCF)}
-                </p>
-              </div>
-              <div className="bg-white dark:bg-neutral-800 border border-neutral-300 shadow  p-6">
-                <h2 className="text-xs font-bold text-center text-black uppercase dark:text-neutral-300 mb-2">
-                  Total de Q
-                </h2>
-                <p className="text-xl text-center font-bold text-red-800 dark:text-green-400">
-                  {totalQ.toLocaleString("es-PE")}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* CONTENEDOR DE GRÁFICO DE LÍNEAS */}
-            <div className="w-[700px] h-[350px] bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 p-8 shadow">
-              <h3 className="text-xs font-bold mb-6 text-red-900 dark:text-white text-center uppercase">
-                Gráfico de Progreso de Ventas
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {/* CF */}
+            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:bg-neutral-900">
+              <h3 className="mb-3 text-center text-sm text-slate-900">
+                Cargo Fijo sin Igv
               </h3>
-
-              <div className="flex gap-4 h-full">
-                {/* Gráfico */}
-                <div className="flex-1">
-                  <ResponsiveContainer width="100%" height={270}>
-                    <LineChart
-                      data={dataFiltrada}
-                      margin={{ top: 20, left: 20, right: 20, bottom: 20 }}
-                    >
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        vertical={true}
-                        horizontal={false}
-                      />
-                      <XAxis
-                        dataKey="name"
-                        tick={{ fontSize: 10, fill: "#000" }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          fontSize: "10px",
-                          padding: "6px 8px",
-                          minWidth: "80px",
-                          textAlign: "center",
-                          fontWeight: "bold",
-                          textTransform: "Uppercase",
-                        }}
-                        formatter={(v) =>
-                          tipoDato === "CF" ? formatoSoles.format(v) : v
-                        }
-                      />
-                      <Legend
-                        wrapperStyle={{
-                          fontSize: "10px",
-                          fontWeight: "bold",
-                          color: "#000",
-                        }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey={tipoDato}
-                        stroke={tipoDato === "CF" ? "#0e8577ff" : "#0a0e70ff"}
-                        strokeWidth={2}
-                        dot
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Botones a la derecha */}
-                <div className="flex flex-col gap-4 mt-16 items-center">
-                  <button
-                    onClick={() => setTipoDato("CF")}
-                    className={`w-12 px-2 py-3 text-xs rounded-md transition text-center ${
-                      tipoDato === "CF"
-                        ? "bg-black text-white font-semibold"
-                        : "bg-neutral-200 font-semibold text-black dark:bg-neutral-700 dark:text-white"
-                    }`}
-                  >
-                    CF
-                  </button>
-                  <button
-                    onClick={() => setTipoDato("Q")}
-                    className={`w-12 px-2 py-3 text-xs rounded-md transition text-center ${
-                      tipoDato === "Q"
-                        ? "bg-black text-white font-semibold"
-                        : "bg-neutral-200 font-semibold text-black dark:bg-neutral-700 dark:text-white"
-                    }`}
-                  >
-                    Q
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* CONTENEDOR DE GRÁFICO DE TORTA */}
-            <div className="w-[400px] h-[350px] bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700  p-8 shadow">
-              <h3 className="text-xs font-bold mb-6 text-red-900 dark:text-white text-center uppercase">
-                Distribución por Segmento
-              </h3>
-
-              {dataSegmentos.length === 0 ? (
-                <p className="text-xs text-black dark:text-white">
-                  No hay datos
-                </p>
-              ) : (
-                (() => {
-                  const COLORS = [
-                    "#001fcfff",
-                    "#d12a00dc",
-                    "#23e289d5",
-                    "#FF8042",
-                    "#AF19FF",
-                    "#FF4560",
-                    "#775DD0",
-                    "#00E396",
-                  ];
-
-                  const total = dataSegmentos.reduce(
-                    (sum, seg) => sum + seg.total,
-                    0
-                  );
-
-                  return (
-                    <div className="flex flex-col items-center justify-center">
-                      <ResponsiveContainer width={300} height={200}>
-                        <PieChart>
-                          <Pie
-                            data={dataSegmentos}
-                            dataKey="total"
-                            nameKey="segmento"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={100}
-                            innerRadius={50}
-                            labelLine={false}
-                            cornerRadius={6}
-                          >
-                            {dataSegmentos.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={COLORS[index % COLORS.length]}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: "#ffffff",
-                              border: "1px solid #ccc",
-                              fontSize: "11px",
-                              padding: "8px 12px",
-                              boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-                              color: "#000",
-                              textAlign: "center",
-                              fontWeight: "bold",
-                              textTransform: "uppercase",
-                            }}
-                            formatter={(value, name) => {
-                              const porcentaje = (
-                                (value / total) *
-                                100
-                              ).toFixed(2);
-                              return [
-                                `${value} EMPRESAS (${porcentaje}%)`,
-                                name,
-                              ];
-                            }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-
-                      <ul className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-xs text-black font-semibold dark:text-white justify-center">
-                        {dataSegmentos.map((entry, index) => (
-                          <li key={index} className="flex items-center gap-2">
-                            <span
-                              className="w-2 h-2 rounded-full inline-block"
-                              style={{
-                                backgroundColor: COLORS[index % COLORS.length],
-                              }}
-                            />
-                            <span className="text-black dark:text-white">
-                              {entry.segmento
-                                ? entry.segmento.charAt(0).toUpperCase() +
-                                  entry.segmento.slice(1).toLowerCase()
-                                : "Sin información"}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })()
-              )}
-            </div>
-          </div>
-          {/* FILA DE PROYECCION*/}
-          <div className="mt-4 flex flex-col lg:flex-row gap-4 w-full h-[350px]">
-            {/* GRÁFICO 1 */}
-            <div className="flex-1 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700  p-6 shadow">
-              <h3 className="text-xs font-bold mb-4 text-red-900 dark:text-white text-center uppercase">
-                Distribución por Estado Final
-              </h3>
-
-              {dataEstadosDona.length === 0 ? (
-                <p className="text-sm text-center text-black dark:text-white">
-                  No hay datos
-                </p>
-              ) : (
-                <>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie
-                        data={dataEstadosDona}
-                        dataKey="total"
-                        nameKey="estado"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        innerRadius={40} // más grande para que se note más el borde interno
-                        minAngle={25}
-                        labelLine={false}
-                        cornerRadius={6} // se aplicará en ambos lados, pero se verá más en el interior
-                      >
-                        {dataEstadosDona.map((entry, index) => {
-                          const estado = entry.estado?.toUpperCase() || "OTRO";
-                          const color =
-                            estado === "APROBADO"
-                              ? "#001fcfff"
-                              : estado === "RECHAZADO"
-                              ? "#23e289d5"
-                              : estado === "EN EVALUACION"
-                              ? "#d12a00dc"
-                              : "#6c757d";
-
-                          return <Cell key={`cell-${index}`} fill={color} />;
-                        })}
-                      </Pie>
-
-                      <Tooltip
-                        formatter={(value, name) => {
-                          const total = dataEstadosDona.reduce(
-                            (acc, cur) => acc + cur.total,
-                            0
-                          );
-                          const porcentaje = ((value / total) * 100).toFixed(2);
-                          return [`${value} registros (${porcentaje}%)`, name];
-                        }}
-                        contentStyle={{
-                          backgroundColor: "#ffffff",
-                          fontSize: "11px",
-                          fontWeight: "bold",
-                          textTransform: "uppercase",
-                          border: "1px solid #ccc",
-                          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-
-                  {/* Leyenda sincronizada */}
-                  <ul className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-xs font-semibold justify-center text-black dark:text-white">
-                    {dataEstadosDona.map((entry, index) => {
-                      const estado = entry.estado?.toUpperCase() || "OTRO";
-                      const color =
-                        estado === "APROBADO"
-                          ? "#001fcfff"
-                          : estado === "RECHAZADO"
-                          ? "#23e289d5"
-                          : estado === "EN EVALUACION"
-                          ? "#d12a00dc"
-                          : "#6c757d";
-
-                      return (
-                        <li
-                          key={index}
-                          className="flex items-center gap-2 capitalize"
-                        >
-                          <span
-                            className="w-3 h-3 rounded-full inline-block"
-                            style={{ backgroundColor: color }}
-                          />
-                          <span className="text-black dark:text-white font-semibold">
-                            {entry.estado?.toLowerCase()}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              )}
-            </div>
-
-            {/* GRÁFICO 2 */}
-            <div className="flex-1 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 p-6 shadow">
-              {/* Título centrado */}
-              <div className="relative mb-4">
-                <h3 className="text-xs font-bold text-red-900 dark:text-white uppercase text-center">
-                  Distribución por Tipo de Venta
-                </h3>
-
-                {tipoSeleccionado && (
-                  <button
-                    onClick={() => setTipoSeleccionado(null)}
-                    className="absolute right-2 top-1 text-sm font-bold text-black hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-400"
-                  >
-                    🡸
-                  </button>
-                )}
-              </div>
-
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart
-                  data={
-                    tipoSeleccionado ? dataPorProducto() : dataAgrupadaPorTipo()
-                  }
-                  margin={{ top: 20, right: 20, left: 20, bottom: 30 }}
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 10, right: 20, left: 20, bottom: 10 }} // 👈 aquí el padding
                 >
                   <CartesianGrid
+                    strokeDasharray="2 2" // 👈 3px de trazo, 3px de espacio
+                    vertical={false} // 👈 oculta las verticales (si solo quieres horizontales)
+                    // 👈 opcional: hace más suaves las líneas
+                  />
+
+                  <XAxis dataKey="mesLabel" className="text-[10px]" />
+                  <Tooltip
+                    content={({ label, payload }) => {
+                      if (!payload || payload.length === 0) return null;
+
+                      return (
+                        <div className=" border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                          {/* Título centrado */}
+                          <div className="mb-1 text-center text-xs font-semibold text-slate-700 dark:text-slate-200">
+                            {payload[0]?.payload?.mes || label}
+                          </div>
+
+                          {/* Valores */}
+                          {payload.map((item, i) => (
+                            <div
+                              key={i}
+                              className="flex justify-between text-xs text-slate-600 dark:text-slate-300"
+                            >
+                              <span className="font-medium">{item.name}:</span>
+                              <span
+                                className="ml-2 font-semibold"
+                                style={{ color: item.stroke }}
+                              >
+                                {item.name === "CF"
+                                  ? fmtMoney(item.value)
+                                  : fmtInt(item.value)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }}
+                  />
+
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="CF"
+                    stroke="#328708ff"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    isAnimationActive={firstRender.current}
+                    animationDuration={1200}
+                    animationEasing="ease-in-out"
+                    onAnimationEnd={() => {
+                      // desactiva animación para siempre
+                      firstRender.current = false;
+                    }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Q */}
+            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:bg-neutral-900">
+              <h3 className="mb-3 text-center text-sm text-slate-900">
+                Q de Lineas
+              </h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 10, right: 20, left: 20, bottom: 10 }}
+                >
+                  <CartesianGrid strokeDasharray="2 2" vertical={false} />
+
+                  <XAxis dataKey="mesLabel" className="text-[10px]" />
+
+                  <Tooltip
+                    content={({ label, payload }) => {
+                      if (!payload || payload.length === 0) return null;
+                      return (
+                        <div className="border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                          {/* Título centrado */}
+                          <div className="mb-1 text-center text-xs font-semibold text-slate-700 dark:text-slate-200">
+                            {payload[0]?.payload?.mes || label}
+                          </div>
+
+                          {/* Valores */}
+                          {payload.map((item, i) => (
+                            <div
+                              key={i}
+                              className="flex justify-between text-xs text-slate-600 dark:text-slate-300"
+                            >
+                              <span className="font-medium">{item.name}:</span>
+                              <span
+                                className="ml-2 font-semibold"
+                                style={{ color: item.stroke }}
+                              >
+                                {item.name === "Q"
+                                  ? fmtInt(item.value)
+                                  : item.value}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }}
+                  />
+
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="Q"
+                    stroke="#9c0494ff"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    isAnimationActive={firstRender.current}
+                    animationDuration={1200}
+                    animationEasing="ease-in-out"
+                    onAnimationEnd={() => {
+                      // desactiva animación para siempre
+                      firstRender.current = false;
+                    }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* ====== TRES TARJETAS ====== */}
+          <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+            {/* Torta por estado */}
+            <div className="flex h-[380px] flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:bg-neutral-900">
+              {/* Header con título centrado */}
+              <div className="mb-4 flex flex-col items-center justify-center">
+                <h3 className="mb-3 text-center text-sm text-slate-900">
+                  {" "}
+                  Distribución por Estado
+                </h3>
+              </div>
+
+              {/* Contenedor del gráfico */}
+              <div className="relative min-h-0 flex-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart
+                    margin={{ top: 0, right: 12, bottom: 20, left: 12 }}
+                  >
+                    <Pie
+                      data={[...distEstado].sort(
+                        (a, b) => (b?.totalQ ?? 0) - (a?.totalQ ?? 0)
+                      )}
+                      dataKey="totalQ"
+                      nameKey="_id"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={110}
+                      paddingAngle={1} // menos separación
+                      cornerRadius={8} // bordes suaves en los sectores
+                      labelLine={false}
+                      isAnimationActive={true}
+                      minAngle={6}
+                      label={false} // quitamos labels directos
+                    >
+                      {distEstado.map((_, i) => (
+                        <Cell
+                          key={i}
+                          fill={PIE_COLORS[i % PIE_COLORS.length]}
+                          stroke="#fff"
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </Pie>
+
+                    {/* Tooltip elegante y centrado */}
+                    <Tooltip
+                      content={({ payload }) => {
+                        if (!payload || payload.length === 0) return null;
+                        const item = payload[0]?.payload;
+
+                        return (
+                          <div className="border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                            {/* Encabezado */}
+                            <div className="mb-2 text-center text-sm font-semibold text-slate-800 dark:text-slate-100">
+                              {item?._id}
+                            </div>
+
+                            {/* Valores */}
+                            <div className="flex flex-col items-center gap-1 text-xs text-slate-700 dark:text-slate-300">
+                              <div>
+                                <span className="font-medium">Q: </span>
+                                <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {fmtInt(item?.totalQ)}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="font-medium">CF: </span>
+                                <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {fmtMoney(item?.totalCF)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
+
+                    {/* Leyenda minimalista */}
+                    <Legend
+                      verticalAlign="bottom"
+                      align="center"
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: 11, marginTop: 8 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="flex h-[380px] flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:bg-neutral-900">
+              {/* Header centrado */}
+              <div className="mb-3 text-center">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Distribución por Tipo de Venta
+                </h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Líneas (Q) y Cargo Fijo (CF)
+                </p>
+              </div>
+
+              {barLoading ? (
+                <div className="flex flex-1 items-center justify-center">
+                  <Loader variant="inline" message="Cargando…" />
+                </div>
+              ) : (
+                <div className="min-h-0 flex-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={[...barData].sort((a, b) =>
+                        a.name.localeCompare(b.name)
+                      )}
+                      margin={{ top: 12, right: 12, left: 12, bottom: 18 }}
+                    >
+                      {/* 🎨 Degradado elegante para la barra */}
+                      <defs>
+                        <linearGradient
+                          id="barFill"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop offset="0%" stopColor="#2563eb" />{" "}
+                          {/* azul elegante */}
+                          <stop offset="100%" stopColor="#1e3a8a" />{" "}
+                          {/* azul profundo */}
+                        </linearGradient>
+                      </defs>
+
+                      {/* Grid horizontal con estilo suave */}
+                      <CartesianGrid strokeDasharray="2 2" vertical={false} />
+
+                      {/* Eje X */}
+                      <XAxis
+                        dataKey="name"
+                        interval={0}
+                        tickMargin={12}
+                        tick={({ x, y, payload, index }) => {
+                          const raw = payload?.value ?? "";
+                          const label = abreviarEtiqueta(raw);
+                          const offset = index % 2 === 0 ? 0 : 14;
+                          return (
+                            <text
+                              x={x}
+                              y={y + offset}
+                              dy={16}
+                              textAnchor="middle"
+                              fontSize={10}
+                              fontWeight={600}
+                              fill="#334155"
+                            >
+                              {label}
+                            </text>
+                          );
+                        }}
+                      />
+
+                      {/* Tooltip elegante y centrado */}
+                      <Tooltip
+                        content={({ payload }) => {
+                          if (!payload || payload.length === 0) return null;
+                          const item = payload[0]?.payload;
+                          return (
+                            <div className="text-center border border-slate-200 bg-white px-4 py-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                              {/* Título */}
+                              <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
+                                {item?.name}
+                              </div>
+                              {/* Valor Q */}
+                              <div className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                                Q: {fmtInt(item?.totalQ)}
+                              </div>
+                              {/* Valor CF */}
+                              <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                CF: {fmtMoney(item?.totalCF)}
+                              </div>
+                            </div>
+                          );
+                        }}
+                      />
+
+                      {/* Una sola barra (Q) */}
+                      <Bar dataKey="totalQ" fill="url(#barFill)" barSize={36}>
+                        <LabelList
+                          dataKey="totalQ"
+                          position="top"
+                          content={({ x, y, value }) => (
+                            <text
+                              x={x + 18}
+                              y={y - 6}
+                              fill="#0f172a"
+                              fontSize={10}
+                              fontWeight={700}
+                              textAnchor="middle"
+                            >
+                              {value}
+                            </text>
+                          )}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            {/* Dona PDV */}
+            <div className="flex h-[380px] flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:bg-neutral-900">
+              {/* Título centrado */}
+              <div className="mb-3 text-center">
+                <h3 className="mb-3 text-center text-sm text-slate-900">
+                  {" "}
+                  PDV vs No PDV
+                </h3>
+              </div>
+
+              {/* Donut */}
+              <div className="min-h-0 flex-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart
+                    margin={{ top: 0, right: 12, bottom: 12, left: 12 }}
+                  >
+                    <Pie
+                      data={distPDV}
+                      dataKey="totalQ"
+                      nameKey="_id"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50} // más ancho, sobrio
+                      outerRadius={110}
+                      paddingAngle={1} // menos separación entre segmentos
+                      cornerRadius={8} // bordes suaves
+                      labelLine={false}
+                      label={false} // quitamos labels directos
+                      isAnimationActive={true}
+                      minAngle={6}
+                    >
+                      {distPDV.map((_, i) => (
+                        <Cell
+                          key={i}
+                          fill={PIE_COLORS[i % PIE_COLORS.length]}
+                          stroke="#fff"
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </Pie>
+
+                    {/* Tooltip elegante y recto */}
+                    <Tooltip
+                      content={({ payload }) => {
+                        if (!payload || payload.length === 0) return null;
+                        const item = payload[0]?.payload;
+                        return (
+                          <div className="border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                            {/* Encabezado */}
+                            <div className="mb-2 text-center text-sm font-semibold text-slate-800 dark:text-slate-100">
+                              {item?._id}
+                            </div>
+
+                            {/* Valores */}
+                            <div className="flex flex-col items-center gap-1 text-xs text-slate-700 dark:text-slate-300">
+                              <div>
+                                <span className="font-medium">Q: </span>
+                                <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {fmtInt(item?.totalQ)}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="font-medium">CF: </span>
+                                <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {fmtMoney(item?.totalCF)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
+
+                    {/* Leyenda minimalista */}
+                    <Legend
+                      verticalAlign="bottom"
+                      align="center"
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: 11, marginTop: 8 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* ====== COMPARATIVA + MTD/YTD ====== */}
+          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Comparativa (1 col) */}
+            <div className="col-span-1 flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-md dark:bg-neutral-900">
+              {/* Header */}
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="w-full text-[11px] font-semibold uppercase tracking-wide text-center text-slate-900 dark:text-slate-100">
+                  Comparativa
+                </h3>
+
+                <div className="flex items-center gap-1.5">
+                  {["anual", "trimestre", "mes"].map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setTipoVistaComparativa(k)}
+                      aria-pressed={tipoVistaComparativa === k}
+                      className={[
+                        "rounded px-2 py-1 text-[11px] transition",
+                        tipoVistaComparativa === k
+                          ? "bg-blue-600 text-white shadow-sm"
+                          : "border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-neutral-800",
+                      ].join(" ")}
+                    >
+                      {k === "anual"
+                        ? "Anual"
+                        : k === "trimestre"
+                        ? "Trim."
+                        : "Mes"}
+                    </button>
+                  ))}
+
+                  {tipoVistaComparativa === "mes" && (
+                    <select
+                      value={mesComparativa}
+                      onChange={(e) =>
+                        setMesComparativa(Number(e.target.value))
+                      }
+                      className="rounded border border-slate-300 px-2 py-1 text-[11px] dark:border-slate-700 dark:bg-neutral-900 dark:text-slate-200"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                        <option key={m} value={m}>
+                          {new Date(2025, m - 1).toLocaleString("es-PE", {
+                            month: "long",
+                          })}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {tipoVistaComparativa === "trimestre" && (
+                    <select
+                      value={trimestreComparativa}
+                      onChange={(e) =>
+                        setTrimestreComparativa(Number(e.target.value))
+                      }
+                      className="rounded border border-slate-300 px-2 py-1 text-[11px] dark:border-slate-700 dark:bg-neutral-900 dark:text-slate-200"
+                    >
+                      <option value={1}>1° Trimestre</option>
+                      <option value={2}>2° Trimestre</option>
+                      <option value={3}>3° Trimestre</option>
+                      <option value={4}>4° Trimestre</option>
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {/* Chart (más bajo) */}
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart
+                  data={[...dataComparativa].sort((a, b) =>
+                    a.name.localeCompare(b.name)
+                  )}
+                  margin={{ top: 8, right: 8, left: 8, bottom: 12 }}
+                >
+                  <defs>
+                    <linearGradient id="barPast" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f59e0b" />
+                      <stop offset="100%" stopColor="#b45309" />
+                    </linearGradient>
+                    <linearGradient id="barActual" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3b82f6" />
+                      <stop offset="100%" stopColor="#1e3a8a" />
+                    </linearGradient>
+                  </defs>
+
+                  <CartesianGrid
                     strokeDasharray="3 3"
-                    horizontal={true}
                     vertical={false}
+                    strokeOpacity={0.12}
                   />
                   <XAxis
                     dataKey="name"
-                    interval={0}
-                    tick={({ x, y, payload, index }) => {
-                      const dy = index % 2 === 0 ? 0 : 16;
-                      const label =
-                        typeof payload.value === "string"
-                          ? payload.value.charAt(0).toUpperCase() +
-                            payload.value.slice(1).toLowerCase()
-                          : payload.value;
+                    tick={{ fontSize: 10, fontWeight: 600, fill: "#334155" }}
+                  />
+
+                  <Tooltip
+                    content={({ label, payload = [] }) => {
+                      if (!payload.length) return null;
+                      const p = payload.reduce((acc, it) => {
+                        acc[it.dataKey] = it.value;
+                        return acc;
+                      }, {});
+                      const vari = payload.find((it) => it.dataKey === "actual")
+                        ?.payload?.variacion;
+                      const n =
+                        typeof vari === "string"
+                          ? parseFloat(vari)
+                          : Number(vari);
+                      const sign = Number.isFinite(n) ? (n > 0 ? "+" : "") : "";
+                      const textVar = Number.isFinite(n)
+                        ? `${sign}${n.toFixed(1)}%`
+                        : vari ?? "—";
+                      const colorVar = Number.isFinite(n)
+                        ? n >= 0
+                          ? "#16a34a"
+                          : "#dc2626"
+                        : "#334155";
+
                       return (
-                        <text
-                          x={x}
-                          y={y + dy}
-                          dy={16}
-                          textAlign="middle"
-                          fontSize={10}
-                          fontWeight="bold"
-                          fill="#333"
-                        >
-                          {label}
-                        </text>
+                        <div className="text-center border border-slate-200 bg-white px-3 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
+                            {label}
+                          </div>
+                          <div className="text-[11px] text-slate-600 dark:text-slate-300">
+                            Año Pasado: <b>{p.pasado ?? "—"}</b>
+                          </div>
+                          <div className="text-[11px] text-slate-600 dark:text-slate-300">
+                            Año Actual: <b>{p.actual ?? "—"}</b>
+                          </div>
+                          <div
+                            className="mt-0.5 text-[11px] font-semibold"
+                            style={{ color: colorVar }}
+                          >
+                            Variación: {textVar}
+                          </div>
+                        </div>
                       );
                     }}
                   />
-                  <Tooltip
-                    formatter={(v) => `${v} registros`}
-                    contentStyle={{
-                      fontSize: "10px",
-                      fontWeight: "bold",
-                      textAlign: "center",
-                      textTransform: "uppercase",
-                    }}
+
+                  <Legend wrapperStyle={{ fontSize: 10, marginTop: 2 }} />
+
+                  <Bar
+                    dataKey="pasado"
+                    fill="url(#barPast)"
+                    name="Año Pasado"
+                    barSize={20}
                   />
                   <Bar
-                    dataKey="total"
-                    fill="#ac0202d0"
-                    minPointSize={35}
-                    barSize={45}
-                    stroke="none"
-                    animationDuration={300}
-                    onClick={(data) => {
-                      if (!tipoSeleccionado) {
-                        setTipoSeleccionado(data.name);
-                      }
-                    }}
+                    dataKey="actual"
+                    fill="url(#barActual)"
+                    name="Año Actual"
+                    barSize={20}
                   >
                     <LabelList
-                      dataKey="total"
+                      dataKey="variacion"
                       position="top"
-                      content={({ x, y, value }) => (
-                        <text
-                          x={x + 22}
-                          y={y - 6}
-                          fill="#0e0e0efd"
-                          fontSize={10}
-                          fontWeight="bold"
-                          textAnchor="middle"
-                        >
-                          {value}
-                        </text>
-                      )}
+                      content={({ x, y, value }) => {
+                        const n =
+                          typeof value === "string"
+                            ? parseFloat(value)
+                            : Number(value);
+                        const sign = Number.isFinite(n)
+                          ? n > 0
+                            ? "+"
+                            : ""
+                          : "";
+                        const text = Number.isFinite(n)
+                          ? `${sign}${n.toFixed(1)}%`
+                          : value ?? "";
+                        const color = Number.isFinite(n)
+                          ? n >= 0
+                            ? "#16a34a"
+                            : "#dc2626"
+                          : "#334155";
+                        return (
+                          <text
+                            x={x + 12}
+                            y={y - 6}
+                            fill={color}
+                            fontSize={10}
+                            fontWeight={700}
+                            textAnchor="middle"
+                          >
+                            {text}
+                          </text>
+                        );
+                      }}
                     />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
-            {/* GRÁFICO 3 */}
-            <div className="flex-1 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700  p-6 shadow">
-              <h3 className="text-xs font-bold mb-4 text-red-900 dark:text-white text-center uppercase">
-                Distribucion por Venta PDV
-              </h3>
-              {/* Puedes usar otro gráfico aquí */}
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={dataPDV}
-                    dataKey="totalQ"
-                    nameKey="tipo"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    innerRadius={40}
-                    minAngle={5} // 👈 más pequeño para permitir ángulos chicos
-                    labelLine={false}
-                    cornerRadius={6}
+            {/* Mes vs YTD (2 cols) */}
+            <div className="col-span-1 flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-md dark:bg-neutral-900 lg:col-span-2">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="w-full text-[13px] text-center font-semibold tracking-wide text-slate-900">
+                  Proyección
+                </h3>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setVista("mes")}
+                    className={`rounded px-2 py-1 text-[11px] ${
+                      vista === "mes"
+                        ? "bg-emerald-600 text-white"
+                        : "border border-slate-300 text-slate-700 hover:bg-slate-50"
+                    }`}
                   >
-                    {dataPDV.map((entry, index) => {
-                      const color =
-                        entry.tipo?.toUpperCase() === "CON PDV"
-                          ? "#001fcfff"
-                          : "#d12a00dc";
-                      return <Cell key={`cell-${index}`} fill={color} />;
-                    })}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value, name, props) => {
-                      const totalQ = dataPDV.reduce(
-                        (acc, cur) => acc + (cur.totalQ || 0),
-                        0
-                      );
-                      const totalCF = dataPDV.reduce(
-                        (acc, cur) => acc + (cur.totalCF || 0),
-                        0
-                      );
-
-                      const q = props.payload.totalQ || 0;
-                      const cf = props.payload.totalCF || 0;
-
-                      const pQ = totalQ
-                        ? ((q / totalQ) * 100).toFixed(2)
-                        : "0.00";
-                      const pCF = totalCF
-                        ? ((cf / totalCF) * 100).toFixed(2)
-                        : "0.00";
-
-                      return [
-                        `${q}  (${pQ}%)\n${formatoSoles.format(cf)} (${pCF}%)`,
-                        name,
-                      ];
-                    }}
-                    contentStyle={{
-                      backgroundColor: "#ffffff",
-                      fontSize: "11px",
-                      fontWeight: "bold",
-                      textTransform: "uppercase",
-                      textAlign: "center",
-                      whiteSpace: "pre-line",
-                      maxWidth: "150px", // 👈 más angosto
-                      padding: "6px 8px", // 👌 un poco de aire
-                      border: "1px solid #ccc",
-                      boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-                      lineHeight: "1.3", // mejora lectura
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-
-              {/* Leyenda */}
-              <ul className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-xs font-semibold justify-center text-black dark:text-white">
-                {dataPDV.map((entry, index) => {
-                  const color =
-                    entry.tipo?.toUpperCase() === "CON PDV"
-                      ? "#001fcfff"
-                      : "#d12a00dc";
-                  return (
-                    <li
-                      key={index}
-                      className="flex items-center gap-2 capitalize"
-                    >
-                      <span
-                        className="w-3 h-3 rounded-full inline-block"
-                        style={{ backgroundColor: color }}
-                      />
-                      <span className="text-black dark:text-white font-semibold">
-                        {entry.tipo?.toLowerCase()}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-col lg:flex-row gap-4 w-full h-[350px]">
-            {/* GRÁFICO 1 */}
-            {/* 📌 Contenedor gráfico + filtros */}
-            <div className="lg:basis-1/3 min-w-0 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 p-6 shadow flex flex-col">
-              {/* 🔹 Selectores de vista */}
-              <div className="flex gap-2 mb-4 justify-center flex-wrap">
-                <select
-                  value={tipoVistaComparativa}
-                  onChange={(e) => setTipoVistaComparativa(e.target.value)}
-                  className="border border-black px-2 py-1.5 text-xs"
-                >
-                  <option value="anual">Anual</option>
-                  <option value="mes">Mensual</option>
-                  <option value="trimestre">Trimestral</option>
-                </select>
-
-                {tipoVistaComparativa === "mes" && (
-                  <select
-                    value={mesComparativa}
-                    onChange={(e) => setMesComparativa(Number(e.target.value))}
-                    className="border rounded px-2 py-1 text-xs"
+                    MTD
+                  </button>
+                  <button
+                    onClick={() => setVista("ytd")}
+                    className={`rounded px-2 py-1 text-[11px] ${
+                      vista === "ytd"
+                        ? "bg-emerald-600 text-white"
+                        : "border border-slate-300 text-slate-700 hover:bg-slate-50"
+                    }`}
                   >
-                    {[
-                      "Enero",
-                      "Febrero",
-                      "Marzo",
-                      "Abril",
-                      "Mayo",
-                      "Junio",
-                      "Julio",
-                      "Agosto",
-                      "Septiembre",
-                      "Octubre",
-                      "Noviembre",
-                      "Diciembre",
-                    ].map((nombre, index) => (
-                      <option key={index} value={index + 1}>
-                        {nombre}
-                      </option>
-                    ))}
-                  </select>
-                )}
-
-                {tipoVistaComparativa === "trimestre" && (
-                  <select
-                    value={trimestreComparativa}
-                    onChange={(e) =>
-                      setTrimestreComparativa(Number(e.target.value))
-                    }
-                    className="border rounded px-2 py-1 text-xs"
-                  >
-                    <option value={1}>T1 (Ene-Mar)</option>
-                    <option value={2}>T2 (Abr-Jun)</option>
-                    <option value={3}>T3 (Jul-Sep)</option>
-                    <option value={4}>T4 (Oct-Dic)</option>
-                  </select>
-                )}
+                    YTD
+                  </button>
+                </div>
               </div>
 
-              {/* 🔹 Título */}
-              <h3 className="text-xs font-bold mb-4 text-red-900 dark:text-white text-center uppercase">
-                {tituloComparativa}
-              </h3>
+              {(() => {
+                const metasMes = { Q: 350, CF: 12000 }; // metas MTD
 
-              {/* 🔹 Gráfico */}
-              {dataComparativa.length === 0 ? (
-                <p className="text-sm text-center text-black dark:text-white">
-                  No hay datos
-                </p>
-              ) : (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart
-                    data={dataComparativa}
-                    margin={{ top: 20, right: 10, left: 10, bottom: 30 }}
-                    barCategoryGap={30}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                      dataKey="name"
-                      tick={{ fontSize: 12, fontWeight: "bold", fill: "#333" }}
-                    />
-
-                    <Tooltip
-                      formatter={(value, serieName, props) => {
-                        const categoria = props?.payload?.name; // "Q" o "CF"
-                        const isCF = categoria === "CF";
-                        const val = isCF
-                          ? formatoSoles.format(value)
-                          : new Intl.NumberFormat("es-PE").format(value);
-                        return [val, serieName.toUpperCase()];
-                      }}
-                      contentStyle={{
-                        fontSize: "0.55rem",
-                        textAlign: "center",
-                        fontWeight: "bold",
-                        textTransform: "uppercase",
-                      }}
-                    />
-
-                    <Legend
-                      iconType="circle"
-                      iconSize={10}
-                      wrapperStyle={{
-                        fontSize: "0.75rem",
-                        fontWeight: "bold",
-                      }}
-                    />
-
-                    <Bar
-                      dataKey="pasado"
-                      fill="#9e2b0ee3"
-                      name="Año Pasado"
-                      minPointSize={25}
-                    />
-                    <Bar
-                      dataKey="actual"
-                      fill="#001279d2"
-                      name="Año Actual"
-                      minPointSize={25}
+                return (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <ComposedChart
+                      layout="vertical"
+                      data={[
+                        {
+                          name: "Q",
+                          actual:
+                            vista === "mes"
+                              ? dataMesVsYTD?.mes?.Q
+                              : dataMesVsYTD?.ytd?.Q,
+                          meta: vista === "mes" ? metasMes.Q : proyAnual?.Q,
+                          proy: vista === "mes" ? proyMes?.Q : proyAnual?.Q,
+                        },
+                        {
+                          name: "CF",
+                          actual:
+                            vista === "mes"
+                              ? dataMesVsYTD?.mes?.CF
+                              : dataMesVsYTD?.ytd?.CF,
+                          meta: vista === "mes" ? metasMes.CF : proyAnual?.CF,
+                          proy: vista === "mes" ? proyMes?.CF : proyAnual?.CF,
+                        },
+                      ]}
+                      margin={{ top: 0, right: 24, left: 8, bottom: 12 }}
+                      barCategoryGap="35%"
                     >
-                      <LabelList
-                        dataKey="variacion"
-                        content={({ x, y, width, value }) => {
-                          const formatted = `${
-                            value > 0 ? "+" : ""
-                          }${value.toFixed(1)}%`;
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        horizontal
+                        vertical={false}
+                        strokeOpacity={0.12}
+                      />
+
+                      <XAxis
+                        type="number"
+                        domain={[0, (dataMax) => Math.ceil(dataMax * 1.12)]}
+                        tick={false}
+                        axisLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        tick={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          fill: "#334155",
+                        }}
+                        axisLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
+                      />
+
+                      <Tooltip
+                        content={({ payload }) => {
+                          if (!payload || payload.length === 0) return null;
+                          const item = payload[0]?.payload;
+                          const isQ = item.name === "Q";
                           return (
-                            <text
-                              x={x + width / 2}
-                              y={y - 10}
-                              textAnchor="middle"
-                              fill="#1a1a1a"
-                              fontSize={10}
-                              fontWeight="bold"
-                            >
-                              {formatted}
-                            </text>
+                            <div className="border border-slate-200 bg-white px-3 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900 text-[11px]">
+                              <div className="mb-1 text-center font-semibold text-slate-800 dark:text-slate-100">
+                                {item.name}
+                              </div>
+                              <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                <span>Actual:</span>
+                                <span className="font-semibold">
+                                  {isQ
+                                    ? fmtInt(item.actual)
+                                    : fmtMoney(item.actual)}
+                                </span>
+                              </div>
+                              {item.proy && (
+                                <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                  <span>Proyección:</span>
+                                  <span className="font-semibold text-amber-600">
+                                    {isQ
+                                      ? fmtInt(item.proy)
+                                      : fmtMoney(item.proy)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           );
                         }}
                       />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </div>
 
-            {/* GRÁFICO 2 */}
-            {/* TARJETA: Mes vs Acumulado del Año (YTD) */}
-            {/* TARJETA: Mes vs Acumulado del Año (YTD) con PROYECCIONES */}
-            <div className="lg:basis-2/3 min-w-0 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 p-6 shadow">
-              <h3 className="text-xs font-bold mb-1 text-red-900 dark:text-white text-center uppercase mb-4">
-                Mes vs Acumulado del Año (YTD)
-              </h3>
-
-              {!dataMesVsYTD || !dataMesVsYTD.meta ? (
-                <p className="text-sm text-center text-black dark:text-white">
-                  No hay datos
-                </p>
-              ) : (
-                (() => {
-                  const meta = dataMesVsYTD.meta;
-
-                  // --- fechas/meta ---
-                  const monthStart = new Date(meta.monthStartISO);
-                  const monthEnd = new Date(meta.monthEndISO);
-                  const ytdStart = new Date(meta.ytdStartISO);
-                  const ytdEnd = new Date(meta.ytdEndISO); // "hoy + 1 día (exclusivo)"
-
-                  // días transcurridos y totales
-                  const msDia = 24 * 60 * 60 * 1000;
-                  const diasMesTrans = Math.max(
-                    1,
-                    Math.round(
-                      (Math.min(ytdEnd, monthEnd) - monthStart) / msDia
-                    )
-                  );
-                  const diasMesTotal = Math.max(
-                    1,
-                    Math.round((monthEnd - monthStart) / msDia)
-                  );
-                  const anioEnd = new Date(meta.year + 1, 0, 1);
-                  const diasAnioTrans = Math.max(
-                    1,
-                    Math.round((ytdEnd - ytdStart) / msDia)
-                  );
-                  const diasAnioTotal = Math.max(
-                    1,
-                    Math.round((anioEnd - ytdStart) / msDia)
-                  );
-
-                  // --- valores reales (del backend) ---
-                  const YTD_Q = dataMesVsYTD?.ytd?.Q ?? 0;
-                  const YTD_CF = dataMesVsYTD?.ytd?.CF ?? 0;
-
-                  // Si tu endpoint devuelve MTD, úsalo; si no, puedes setearlo = mes completo o 0.
-                  const MTD_Q = dataMesVsYTD?.mes?.Q ?? 0;
-                  const MTD_CF = dataMesVsYTD?.mes?.CF ?? 0;
-
-                  // --- proyecciones lineales ---
-                  const proyMesQ =
-                    diasMesTrans > 0
-                      ? MTD_Q * (diasMesTotal / diasMesTrans)
-                      : 0;
-                  const proyMesCF =
-                    diasMesTrans > 0
-                      ? MTD_CF * (diasMesTotal / diasMesTrans)
-                      : 0;
-
-                  const proyAnioQ =
-                    diasAnioTrans > 0
-                      ? YTD_Q * (diasAnioTotal / diasAnioTrans)
-                      : 0;
-                  const proyAnioCF =
-                    diasAnioTrans > 0
-                      ? YTD_CF * (diasAnioTotal / diasAnioTrans)
-                      : 0;
-
-                  // dataset horizontal (Q y CF como categorías)
-                  const data = [
-                    {
-                      name: "Q",
-                      MTD: Math.round(MTD_Q),
-                      YTD: Math.round(YTD_Q),
-                      proyMesMTD: Math.round(proyMesQ), // 👈 para barra roja
-                      proyAnioYTD: Math.round(proyAnioQ), // 👈 para barra verde
-                      tipo: "Q",
-                    },
-                    {
-                      name: "CF",
-                      MTD: MTD_CF,
-                      YTD: YTD_CF,
-                      proyMesMTD: proyMesCF,
-                      proyAnioYTD: proyAnioCF,
-                      tipo: "CF",
-                    },
-                  ];
-
-                  const fmt = (v, isCF) =>
-                    isCF
-                      ? formatoSoles.format(v)
-                      : new Intl.NumberFormat("es-PE").format(v);
-
-                  return (
-                    <>
-                      {/* 🔹 Botones de cambio de vista */}
-                      <div className="flex justify-center gap-2 mb-4">
-                        <button
-                          onClick={() => setVista("mes")}
-                          className={`px-3 py-2  text-xs font-bold ${
-                            vista === "mes"
-                              ? "bg-blue-600 text-white"
-                              : "bg-gray-200 dark:bg-neutral-700 text-black dark:text-white"
-                          }`}
-                        >
-                          Mes
-                        </button>
-                        <button
-                          onClick={() => setVista("anio")}
-                          className={`px-3 py-2 text-xs font-bold ${
-                            vista === "anio"
-                              ? "bg-blue-600 text-white"
-                              : "bg-gray-200 dark:bg-neutral-700 text-black dark:text-white"
-                          }`}
-                        >
-                          Año
-                        </button>
-                      </div>
-
-                      <ResponsiveContainer width="100%" height={260}>
-                        <ComposedChart
-                          layout="vertical"
-                          data={data}
-                          margin={{ top: 0, right: 40, left: 0, bottom: 40 }}
-                          barCategoryGap="80%"
-                          barGap={0}
-                        >
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            horizontal={true}
-                            vertical={false}
+                      <Bar dataKey="actual" barSize={22}>
+                        {["Q", "CF"].map((key, i) => (
+                          <Cell
+                            key={i}
+                            fill={key === "Q" ? "#16a34a" : "#2563eb"}
                           />
+                        ))}
+                      </Bar>
 
-                          <XAxis
-                            type="number"
-                            tick={{ fontSize: 11, fill: "#333" }}
-                          />
-                          <YAxis
-                            type="category"
-                            dataKey="name"
-                            tick={{
-                              fontSize: 12,
-                              fontWeight: "bold",
-                              fill: "#333",
-                            }}
-                          />
-
-                          <Tooltip
-                            formatter={(value, serieName, { payload }) => {
-                              const isCF = payload?.tipo === "CF";
-                              return [
-                                fmt(value, isCF).toUpperCase(),
-                                serieName.toUpperCase(),
-                              ];
-                            }}
-                            labelFormatter={(label, payload) => {
-                              const item = payload[0]?.payload;
-                              if (!item) return label.toUpperCase();
-                              const isCF = item.tipo === "CF";
-
-                              // Proyección según vista
-                              const color =
-                                vista === "mes" ? "#9e2b0ee3" : "#000000cb";
-
-                              const proyLabel =
-                                vista === "mes"
-                                  ? "Proyección Mes"
-                                  : "Proyección Año";
-                              const proyValue =
-                                vista === "mes"
-                                  ? item.proyMesMTD
-                                  : item.proyAnioYTD;
-
-                              return (
-                                <div
-                                  style={{
-                                    textAlign: "center",
-                                    fontSize: "0.75rem",
-                                    fontWeight: "bold",
-                                    textTransform: "uppercase",
-                                  }}
-                                >
-                                  <div style={{ color }}>{proyLabel}</div>
-                                  <div style={{ color: "#000000e3" }}>
-                                    {fmt(proyValue, isCF).toUpperCase()}
-                                  </div>
-                                </div>
-                              );
-                            }}
-                            contentStyle={{
-                              fontSize: "0.75rem",
-                              textAlign: "center",
-                              fontWeight: "bold",
-                              textTransform: "uppercase",
-                              padding: "6px 8px",
-                            }}
-                          />
-
-                          <Legend
-                            iconType="circle"
-                            iconSize={10}
-                            wrapperStyle={{
-                              fontSize: "0.75rem",
-                              fontWeight: "bold",
-                            }}
-                          />
-
-                          <Bar
-                            dataKey={vista === "mes" ? "MTD" : "YTD"}
-                            name={vista === "mes" ? "Ventas Mes" : "Ventas Año"}
-                            fill={
-                              vista === "mes"
-                                ? "rgba(12, 175, 197, 1)"
-                                : "#c92a03e7"
-                            }
-                            barSize={30}
-                            minPointSize={10}
-                          >
-                            <LabelList
-                              dataKey={vista === "mes" ? "MTD" : "YTD"}
-                              content={({
-                                x,
-                                y,
-                                width,
-                                height,
-                                value,
-                                payload,
-                              }) => {
-                                if (!value) return null;
-                                const isCF = payload?.tipo === "CF";
-                                return (
-                                  <text
-                                    x={x + width + 5}
-                                    y={y + height / 2 + 3}
-                                    textAnchor="start"
-                                    fontSize={10}
-                                    fontWeight="bold"
-                                    fill="#1a1a1a"
-                                  >
-                                    {fmt(value, isCF)}
-                                  </text>
-                                );
-                              }}
-                            />
-                          </Bar>
-
-                          {/* Línea de proyección condicionada */}
-                          {data.map((item) => (
-                            <ReferenceLine
-                              key={item.name}
-                              x={
-                                vista === "mes"
-                                  ? item.proyMesMTD
-                                  : item.proyAnioYTD
-                              }
-                              stroke={
-                                vista === "mes" ? "#794400ff" : "#9900a7ff"
-                              }
-                              strokeDasharray={vista === "mes" ? "6 4" : "4 3"}
-                              strokeWidth={2}
-                              ifOverflow="extendDomain"
-                              label={{ position: "top", fontSize: 9 }}
-                            />
-                          ))}
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    </>
-                  );
-                })()
-              )}
+                      {/* Líneas de referencia (proyecciones) */}
+                      {["Q", "CF"].map((key) => (
+                        <React.Fragment key={key}>
+                          {vista === "mes" &&
+                            typeof proyMes?.[key] === "number" && (
+                              <ReferenceLine
+                                x={proyMes[key]}
+                                stroke={key === "Q" ? "#f59e0b" : "#10b981"}
+                                strokeWidth={2}
+                                strokeDasharray="4 4"
+                                label={{
+                                  value: `Proy ${key}`,
+                                  position: "right",
+                                  fill: key === "Q" ? "#b45309" : "#0f766e",
+                                  fontSize: 10,
+                                }}
+                              />
+                            )}
+                          {vista === "ytd" &&
+                            typeof proyAnual?.[key] === "number" && (
+                              <ReferenceLine
+                                x={proyAnual[key]}
+                                stroke={key === "Q" ? "#f59e0b" : "#10b981"}
+                                strokeWidth={2}
+                                strokeDasharray="4 4"
+                                label={{
+                                  value: `Proy ${key}`,
+                                  position: "right",
+                                  fill: key === "Q" ? "#b45309" : "#0f766e",
+                                  fontSize: 10,
+                                }}
+                              />
+                            )}
+                        </React.Fragment>
+                      ))}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                );
+              })()}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
