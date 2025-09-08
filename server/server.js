@@ -46,6 +46,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.get("/healthz", (req, res) => res.send("ok"));
 
 // Rutas API
 app.use("/api/auth", authRoutes);
