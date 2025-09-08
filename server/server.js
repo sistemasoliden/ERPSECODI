@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
+
 import { fileURLToPath } from "url";
 
 import authRoutes from "./routes/authRoutes.js";
@@ -69,23 +71,35 @@ app.use("/api/oportunidades", opportunityRoutes);
 
 app.use("/api/ventas", ventasActivacionRoutes);
 // 👉 Servir frontend (solo en producción)
+// 👉 Servir frontend (SPA)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-if (process.env.NODE_ENV === "production") {
-  const clientPath = path.join(__dirname, "../frontend/dist");
-  app.use(express.static(clientPath));
-  app.get("/", (req, res) => {
-    res.sendFile(path.join(clientPath, "index.html"));
-  });
+function resolveExistingPath(...candidates) {
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
 }
 
-// Conexión MongoDB y levantar servidor
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("✅ Conectado a MongoDB Atlas");
-    app.listen(PORT, () =>
-      console.log(`🚀 Servidor escuchando en http://localhost:${PORT}`)
-    );
-  })
-  .catch((err) => console.error("❌ Error al conectar a MongoDB:", err));
+if (process.env.NODE_ENV === "production") {
+  const clientPath = resolveExistingPath(
+    path.join(__dirname, "../frontend/dist"),
+    path.join(__dirname, "../client/dist"),
+    path.join(__dirname, "../dist"),
+    path.join(__dirname, "./dist")
+  );
+
+  if (clientPath) {
+    console.log(`🗂  Serving static from: ${clientPath}`);
+    // No dejes que sirva index por defecto; lo controlamos abajo
+    app.use(express.static(clientPath, { index: false }));
+
+    // Cualquier GET que NO empiece con /api => index.html (React SPA)
+    app.get(/^\/(?!api).*/, (req, res) => {
+      res.sendFile(path.join(clientPath, "index.html"));
+    });
+  } else {
+    console.warn("⚠️  No se encontró el build del frontend. Asegúrate de construirlo en deploy.");
+  }
+}
