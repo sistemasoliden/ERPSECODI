@@ -1,5 +1,5 @@
 // src/App.jsx
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { useEffect } from "react";
 import { initTheme } from "./lib/theme";
 
@@ -28,7 +28,6 @@ const ROLES_IDS = {
   backoffice: "68a4f22d27e6abe98157a830",
   comercial: "68a4f22d27e6abe98157a831",
   supervisorcomercial: "68a4f22d27e6abe98157a832",
-  // 👇 si usas postventa en las rutas, define su ID aquí
   postventa: "PUT_THE_REAL_ID_HERE",
 };
 
@@ -36,7 +35,8 @@ const ProtectedRoute = ({ children, roleIds }) => {
   const user = JSON.parse(localStorage.getItem("user"));
   if (!user) return <Navigate to="/login" replace />;
 
-  const userRoleId = typeof user.role === "string" ? user.role : (user.role?._id || "");
+  const userRoleId =
+    typeof user.role === "string" ? user.role : (user.role?._id || "");
   if (roleIds && !roleIds.includes(userRoleId)) return <Navigate to="/" replace />;
 
   return children;
@@ -44,12 +44,12 @@ const ProtectedRoute = ({ children, roleIds }) => {
 
 export default function App() {
   useEffect(() => {
-    const cleanup = initTheme(); // lee localStorage y aplica 'dark' | 'light' | 'auto'
+    const cleanup = initTheme();
     return cleanup;
   }, []);
 
   return (
-    <Router>
+    <>
       <Navbar />
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -65,73 +65,54 @@ export default function App() {
         />
 
         <Route
-  path="/mi-base"
-  element={
-    <ProtectedRoute
-      roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}
-    >
-      <MiBase />
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/mis-oportunidades"
-  element={
-    <ProtectedRoute
-      roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}
-    >
-      <MisOportunidades/>
-    </ProtectedRoute>
-  }
-/>
-
-<Route
-  path="/clientes/:ruc"
-  element={
-    <ProtectedRoute
-      roleIds={[
-        ROLES_IDS.comercial,
-        ROLES_IDS.supervisorcomercial,
-      
-      ]}
-    >
-      <ClienteDetalle />
-    </ProtectedRoute>
-  }
-/>
-
-<Route
-  path="/cliente-detalle/:id"
-  element={
-    <ProtectedRoute
-      roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}
-    >
-      <ClienteDetalle/>
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/asignaciones"
-  element={
-    <ProtectedRoute
-      roleIds={[ROLES_IDS.sistemas]}
-    >
-      <Asignaciones />
-    </ProtectedRoute>
-  }
-
-/>
-
-        {/* Ventas: solo Sistemas (ajusta si es Back Office u otro) */}
+          path="/mi-base"
+          element={
+            <ProtectedRoute roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}>
+              <MiBase />
+            </ProtectedRoute>
+          }
+        />
         <Route
-  path="/ventas"
-  element={
-    <ProtectedRoute roleIds={[ROLES_IDS.sistemas, ROLES_IDS.backoffice, ROLES_IDS.supervisorcomercial, ROLES_IDS.gerencia]}>
-      <Ventas />
-    </ProtectedRoute>
-  }
-/>
+          path="/mis-oportunidades"
+          element={
+            <ProtectedRoute roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}>
+              <MisOportunidades />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/clientes/:ruc"
+          element={
+            <ProtectedRoute roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}>
+              <ClienteDetalle />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/cliente-detalle/:id"
+          element={
+            <ProtectedRoute roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}>
+              <ClienteDetalle />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/asignaciones"
+          element={
+            <ProtectedRoute roleIds={[ROLES_IDS.sistemas]}>
+              <Asignaciones />
+            </ProtectedRoute>
+          }
+        />
 
+        <Route
+          path="/ventas"
+          element={
+            <ProtectedRoute roleIds={[ROLES_IDS.sistemas, ROLES_IDS.backoffice, ROLES_IDS.supervisorcomercial, ROLES_IDS.gerencia]}>
+              <Ventas />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/EstadoFiltro"
@@ -142,7 +123,6 @@ export default function App() {
           }
         />
 
-        {/* Usuarios: solo Sistemas */}
         <Route
           path="/users"
           element={
@@ -161,21 +141,14 @@ export default function App() {
           }
         />
 
-        {/* Reportes por varios roles */}
         <Route
           path="/Historical"
           element={
-            <ProtectedRoute
-              roleIds={[
-                ROLES_IDS.sistemas,
-                ROLES_IDS.administracion,
-                ROLES_IDS.backoffice,
-                ROLES_IDS.postventa,          // <- asegúrate de tener el ID arriba
-                ROLES_IDS.recursoshumanos,
-                ROLES_IDS.gerencia,
-                ROLES_IDS.supervisorcomercial,
-              ]}
-            >
+            <ProtectedRoute roleIds={[
+              ROLES_IDS.sistemas, ROLES_IDS.administracion, ROLES_IDS.backoffice,
+              ROLES_IDS.postventa, ROLES_IDS.recursoshumanos, ROLES_IDS.gerencia,
+              ROLES_IDS.supervisorcomercial,
+            ]}>
               <Historical />
             </ProtectedRoute>
           }
@@ -184,17 +157,11 @@ export default function App() {
         <Route
           path="/DashboardEjecutives"
           element={
-            <ProtectedRoute
-              roleIds={[
-                ROLES_IDS.sistemas,
-                ROLES_IDS.administracion,
-                ROLES_IDS.backoffice,
-                ROLES_IDS.postventa,
-                ROLES_IDS.recursoshumanos,
-                ROLES_IDS.gerencia,
-                ROLES_IDS.supervisorcomercial,
-              ]}
-            >
+            <ProtectedRoute roleIds={[
+              ROLES_IDS.sistemas, ROLES_IDS.administracion, ROLES_IDS.backoffice,
+              ROLES_IDS.postventa, ROLES_IDS.recursoshumanos, ROLES_IDS.gerencia,
+              ROLES_IDS.supervisorcomercial,
+            ]}>
               <DashboardEjecutives />
             </ProtectedRoute>
           }
@@ -203,17 +170,11 @@ export default function App() {
         <Route
           path="/HistoricalSales"
           element={
-            <ProtectedRoute
-              roleIds={[
-                ROLES_IDS.sistemas,
-                ROLES_IDS.administracion,
-                ROLES_IDS.backoffice,
-                ROLES_IDS.postventa,
-                ROLES_IDS.recursoshumanos,
-                ROLES_IDS.gerencia,
-                ROLES_IDS.supervisorcomercial,
-              ]}
-            >
+            <ProtectedRoute roleIds={[
+              ROLES_IDS.sistemas, ROLES_IDS.administracion, ROLES_IDS.backoffice,
+              ROLES_IDS.postventa, ROLES_IDS.recursoshumanos, ROLES_IDS.gerencia,
+              ROLES_IDS.supervisorcomercial,
+            ]}>
               <HistoricalSales />
             </ProtectedRoute>
           }
@@ -222,17 +183,11 @@ export default function App() {
         <Route
           path="/DashboardSales"
           element={
-            <ProtectedRoute
-              roleIds={[
-                ROLES_IDS.sistemas,
-                ROLES_IDS.administracion,
-                ROLES_IDS.backoffice,
-                ROLES_IDS.postventa,
-                ROLES_IDS.recursoshumanos,
-                ROLES_IDS.gerencia,
-                ROLES_IDS.supervisorcomercial,
-              ]}
-            >
+            <ProtectedRoute roleIds={[
+              ROLES_IDS.sistemas, ROLES_IDS.administracion, ROLES_IDS.backoffice,
+              ROLES_IDS.postventa, ROLES_IDS.recursoshumanos, ROLES_IDS.gerencia,
+              ROLES_IDS.supervisorcomercial,
+            ]}>
               <DashboardSales />
             </ProtectedRoute>
           }
@@ -240,6 +195,6 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </Router>
+    </>
   );
 }
