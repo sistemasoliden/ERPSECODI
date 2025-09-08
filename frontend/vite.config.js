@@ -1,12 +1,30 @@
+// vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path'; // 👈 necesario para el alias
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'), // 👈 Esto hace que @ apunte a la carpeta src
+      '@': path.resolve(__dirname, 'src'),
     },
+  },
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000', // tu backend Express en local
+        changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    outDir: 'dist',
   },
 });
