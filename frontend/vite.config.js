@@ -11,7 +11,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': path.resolve(__dirname, './src'),
     },
   },
   server: {
@@ -19,7 +19,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000', // tu backend Express en local
+        target: 'http://localhost:5000', // backend local
         changeOrigin: true,
       },
     },
@@ -27,4 +27,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
   },
+  // 👇 Esto es lo que faltaba para producción
+  base: './',
 });
