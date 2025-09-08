@@ -26,6 +26,10 @@ import segmentoEmpresaRoutes from "./routes/segmentoEmpresaRoutes.js";
 import ventasActivacionRoutes from "./routes/ventasActivacionRoutes.js";
 import opportunityRoutes from "./routes/opportunityRoutes.js";
 
+
+// Tu modelo User ya está importado desde los controladores o rutas.
+
+
 dotenv.config();
 
 const app = express();
@@ -62,8 +66,8 @@ app.use("/api/segmentoempresa", segmentoEmpresaRoutes);
 // ...
 app.use("/api/oportunidades", opportunityRoutes);
 
-app.use("/api/ventas", ventasActivacionRoutes);
 
+app.use("/api/ventas", ventasActivacionRoutes);
 // 👉 Servir frontend (solo en producción)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,7 +75,7 @@ const __dirname = path.dirname(__filename);
 if (process.env.NODE_ENV === "production") {
   const clientPath = path.join(__dirname, "../frontend/dist");
   app.use(express.static(clientPath));
-  app.get("*", (req, res) => {
+  app.get("/", (req, res) => {
     res.sendFile(path.join(clientPath, "index.html"));
   });
 }
