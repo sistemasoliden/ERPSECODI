@@ -69,8 +69,7 @@ app.use("/api/segmentoempresa", segmentoEmpresaRoutes);
 app.use("/api/oportunidades", opportunityRoutes);
 
 
-app.use("/api/ventas", ventasActivacionRoutes);
-// 👉 Servir frontend (solo en producción)
+app.use("/api/ventas-activacion", ventasActivacionRoutes);// 👉 Servir frontend (solo en producción)
 // 👉 Servir frontend (SPA)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -103,3 +102,12 @@ if (process.env.NODE_ENV === "production") {
     console.warn("⚠️  No se encontró el build del frontend. Asegúrate de construirlo en deploy.");
   }
 }
+// Conexión MongoDB y levantar servidor
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("✅ Conectado a MongoDB Atlas");
+    app.listen(PORT, () =>
+      console.log(`🚀 Servidor escuchando en http://localhost:${PORT}`)
+    );
+  })
+  .catch((err) => console.error("❌ Error al conectar a MongoDB:", err));
