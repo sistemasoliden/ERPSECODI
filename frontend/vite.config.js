@@ -1,32 +1,26 @@
-// vite.config.js
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      "@": path.resolve(__dirname, "src"),
     },
   },
   server: {
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': {
-        target: 'http://localhost:5000', // backend local
+      "/api": {
+        target: "http://localhost:5000",
         changeOrigin: true,
       },
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: "dist",
   },
-  // 👇 Esto es lo que faltaba para producción
-  base: './',
+  base: "/", // 👈 IMPORTANTE
 });
