@@ -16,7 +16,9 @@ import {
   getComparativa,
   getMesVsYTD,
   getVentasPorProducto,
-  getVentasPorConsultor
+  getVentasPorConsultor,
+  getRankingConsultores,
+  getProgresoConsultor
 } from "../controllers/ventaController.js";
 
 const router = express.Router();
@@ -51,5 +53,8 @@ router.get("/mes-vs-ytd", getMesVsYTD);
 
 router.get("/tablaproductos", getVentasPorProducto);
 router.get("/tablaconsultores", getVentasPorConsultor);
+
+router.get("/consultores-ranking", getRankingConsultores);
+router.get("/consultor-progreso", getProgresoConsultor);
 
 export default router;

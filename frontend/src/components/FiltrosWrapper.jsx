@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import EstadoVentaFilter from "./EstadoVentaFilter";
 
 export default function FiltrosWrapper({ children, onChangeFilters }) {
-  const [estado, setEstado] = useState([]);       // ["Aprobado", "Pendiente"]
-  const [anio, setAnio] = useState([]);           // [2023, 2024]
-  const [mes, setMes] = useState([]);             // [1,2,3]
+  const [estado, setEstado] = useState([]); // ["Aprobado", "Pendiente"]
+  const [anio, setAnio] = useState([]); // [2023, 2024]
+  const [mes, setMes] = useState([]); // [1,2,3]
   const [tipoVenta, setTipoVenta] = useState([]); // ["Alta Nueva"...]
   const [soloPdv, setSoloPdv] = useState(false);
 

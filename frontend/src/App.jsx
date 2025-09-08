@@ -1,5 +1,10 @@
 // src/App.jsx
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { useEffect } from "react";
 import { initTheme } from "./lib/theme";
 
@@ -15,7 +20,7 @@ import Ventas from "./pages/Ventas";
 import Navbar from "./components/Navbar";
 import Equipos from "./pages/Equipos";
 import EstadoFiltro from "./pages/EstadoFiltro";
-import MiBase from "./pages/MiBase";    
+import MiBase from "./pages/MiBase";
 import MisOportunidades from "./pages/MisOportunidades";
 import Asignaciones from "./pages/Asignaciones";
 import ClienteDetalle from "./pages/ClienteDetalle";
@@ -36,8 +41,9 @@ const ProtectedRoute = ({ children, roleIds }) => {
   if (!user) return <Navigate to="/login" replace />;
 
   const userRoleId =
-    typeof user.role === "string" ? user.role : (user.role?._id || "");
-  if (roleIds && !roleIds.includes(userRoleId)) return <Navigate to="/" replace />;
+    typeof user.role === "string" ? user.role : user.role?._id || "";
+  if (roleIds && !roleIds.includes(userRoleId))
+    return <Navigate to="/" replace />;
 
   return children;
 };
@@ -67,7 +73,9 @@ export default function App() {
         <Route
           path="/mi-base"
           element={
-            <ProtectedRoute roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}>
+            <ProtectedRoute
+              roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}
+            >
               <MiBase />
             </ProtectedRoute>
           }
@@ -75,7 +83,9 @@ export default function App() {
         <Route
           path="/mis-oportunidades"
           element={
-            <ProtectedRoute roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}>
+            <ProtectedRoute
+              roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}
+            >
               <MisOportunidades />
             </ProtectedRoute>
           }
@@ -83,7 +93,9 @@ export default function App() {
         <Route
           path="/clientes/:ruc"
           element={
-            <ProtectedRoute roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}>
+            <ProtectedRoute
+              roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}
+            >
               <ClienteDetalle />
             </ProtectedRoute>
           }
@@ -91,7 +103,9 @@ export default function App() {
         <Route
           path="/cliente-detalle/:id"
           element={
-            <ProtectedRoute roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}>
+            <ProtectedRoute
+              roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}
+            >
               <ClienteDetalle />
             </ProtectedRoute>
           }
@@ -108,7 +122,14 @@ export default function App() {
         <Route
           path="/ventas"
           element={
-            <ProtectedRoute roleIds={[ROLES_IDS.sistemas, ROLES_IDS.backoffice, ROLES_IDS.supervisorcomercial, ROLES_IDS.gerencia]}>
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.backoffice,
+                ROLES_IDS.supervisorcomercial,
+                ROLES_IDS.gerencia,
+              ]}
+            >
               <Ventas />
             </ProtectedRoute>
           }
@@ -144,11 +165,17 @@ export default function App() {
         <Route
           path="/Historical"
           element={
-            <ProtectedRoute roleIds={[
-              ROLES_IDS.sistemas, ROLES_IDS.administracion, ROLES_IDS.backoffice,
-              ROLES_IDS.postventa, ROLES_IDS.recursoshumanos, ROLES_IDS.gerencia,
-              ROLES_IDS.supervisorcomercial,
-            ]}>
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.administracion,
+                ROLES_IDS.backoffice,
+                ROLES_IDS.postventa,
+                ROLES_IDS.recursoshumanos,
+                ROLES_IDS.gerencia,
+                ROLES_IDS.supervisorcomercial,
+              ]}
+            >
               <Historical />
             </ProtectedRoute>
           }
@@ -157,11 +184,17 @@ export default function App() {
         <Route
           path="/DashboardEjecutives"
           element={
-            <ProtectedRoute roleIds={[
-              ROLES_IDS.sistemas, ROLES_IDS.administracion, ROLES_IDS.backoffice,
-              ROLES_IDS.postventa, ROLES_IDS.recursoshumanos, ROLES_IDS.gerencia,
-              ROLES_IDS.supervisorcomercial,
-            ]}>
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.administracion,
+                ROLES_IDS.backoffice,
+                ROLES_IDS.postventa,
+                ROLES_IDS.recursoshumanos,
+                ROLES_IDS.gerencia,
+                ROLES_IDS.supervisorcomercial,
+              ]}
+            >
               <DashboardEjecutives />
             </ProtectedRoute>
           }
@@ -170,11 +203,17 @@ export default function App() {
         <Route
           path="/HistoricalSales"
           element={
-            <ProtectedRoute roleIds={[
-              ROLES_IDS.sistemas, ROLES_IDS.administracion, ROLES_IDS.backoffice,
-              ROLES_IDS.postventa, ROLES_IDS.recursoshumanos, ROLES_IDS.gerencia,
-              ROLES_IDS.supervisorcomercial,
-            ]}>
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.administracion,
+                ROLES_IDS.backoffice,
+                ROLES_IDS.postventa,
+                ROLES_IDS.recursoshumanos,
+                ROLES_IDS.gerencia,
+                ROLES_IDS.supervisorcomercial,
+              ]}
+            >
               <HistoricalSales />
             </ProtectedRoute>
           }
@@ -183,11 +222,17 @@ export default function App() {
         <Route
           path="/DashboardSales"
           element={
-            <ProtectedRoute roleIds={[
-              ROLES_IDS.sistemas, ROLES_IDS.administracion, ROLES_IDS.backoffice,
-              ROLES_IDS.postventa, ROLES_IDS.recursoshumanos, ROLES_IDS.gerencia,
-              ROLES_IDS.supervisorcomercial,
-            ]}>
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.administracion,
+                ROLES_IDS.backoffice,
+                ROLES_IDS.postventa,
+                ROLES_IDS.recursoshumanos,
+                ROLES_IDS.gerencia,
+                ROLES_IDS.supervisorcomercial,
+              ]}
+            >
               <DashboardSales />
             </ProtectedRoute>
           }

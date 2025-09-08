@@ -102,7 +102,6 @@ function MultiSelect({
         className={[
           (className =
             "h-8 w-auto min-w-[120px] max-w-[160px] rounded-md border  text-[11px]"),
-
           "bg-white text-black border-slate-300",
           "hover:border-slate-400",
           "shadow-sm transition",
@@ -289,7 +288,7 @@ export default function EstadoVentaFilter({
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get("/ventas/activacion/years");
+        const { data } = await api.get("/ventas-activacion/activacion/years");
         setYears(Array.isArray(data) ? data : []);
       } catch {
         setErrYears("No pude cargar años.");

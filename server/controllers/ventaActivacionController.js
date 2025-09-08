@@ -40,7 +40,6 @@ function actDateProjection() {
   };
 }
 
-
 export async function getActivationYears(req, res) {
   try {
     const agg = await Venta.aggregate([
@@ -60,7 +59,8 @@ export async function getActivationYears(req, res) {
 export async function getActivationMonths(req, res) {
   try {
     const year = parseInt(req.query.year, 10);
-    if (!year) return res.status(400).json({ error: "Parámetro 'year' requerido" });
+    if (!year)
+      return res.status(400).json({ error: "Parámetro 'year' requerido" });
 
     const agg = await Venta.aggregate([
       actDateProjection(),

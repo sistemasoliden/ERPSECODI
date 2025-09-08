@@ -6,7 +6,7 @@ import User from "../models/User.js";
 export const listUsers = async (_req, res) => {
   try {
     const users = await User.find()
-      .populate("role", "nombre slug")
+.populate("role", "name slug")
       .populate("estadoUsuario", "nombre")
       .lean();
     res.json(users);

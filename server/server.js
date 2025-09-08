@@ -28,9 +28,7 @@ import segmentoEmpresaRoutes from "./routes/segmentoEmpresaRoutes.js";
 import ventasActivacionRoutes from "./routes/ventasActivacionRoutes.js";
 import opportunityRoutes from "./routes/opportunityRoutes.js";
 
-
 // Tu modelo User ya está importado desde los controladores o rutas.
-
 
 dotenv.config();
 
@@ -38,13 +36,12 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middlewares
-app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://erpsecodi.onrender.com"
-  ],
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "https://erpsecodi.onrender.com"],
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.get("/healthz", (req, res) => res.send("ok"));
 
@@ -69,8 +66,7 @@ app.use("/api/segmentoempresa", segmentoEmpresaRoutes);
 // ...
 app.use("/api/oportunidades", opportunityRoutes);
 
-
-app.use("/api/ventas-activacion", ventasActivacionRoutes);// 👉 Servir frontend (solo en producción)
+app.use("/api/ventas-activacion", ventasActivacionRoutes); // 👉 Servir frontend (solo en producción)
 // 👉 Servir frontend (SPA)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -100,11 +96,14 @@ if (process.env.NODE_ENV === "production") {
       res.sendFile(path.join(clientPath, "index.html"));
     });
   } else {
-    console.warn("⚠️  No se encontró el build del frontend. Asegúrate de construirlo en deploy.");
+    console.warn(
+      "⚠️  No se encontró el build del frontend. Asegúrate de construirlo en deploy."
+    );
   }
 }
 // Conexión MongoDB y levantar servidor
-mongoose.connect(process.env.MONGO_URI)
+mongoose
+  .connect(process.env.MONGO_URI)
   .then(() => {
     console.log("✅ Conectado a MongoDB Atlas");
     app.listen(PORT, () =>

@@ -899,7 +899,7 @@ export default function DashboardComparativas() {
               </div>
 
               {/* Chart (más bajo) */}
-              <ResponsiveContainer width="100%" height={200}>
+              <ResponsiveContainer width="100%" height={260}>
                 <BarChart
                   data={[...dataComparativa].sort((a, b) =>
                     a.name.localeCompare(b.name)
@@ -917,11 +917,7 @@ export default function DashboardComparativas() {
                     </linearGradient>
                   </defs>
 
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    strokeOpacity={0.12}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="name"
                     tick={{ fontSize: 10, fontWeight: 600, fill: "#334155" }}
@@ -978,13 +974,13 @@ export default function DashboardComparativas() {
                     dataKey="pasado"
                     fill="url(#barPast)"
                     name="Año Pasado"
-                    barSize={20}
+                    barSize={40}
                   />
                   <Bar
                     dataKey="actual"
                     fill="url(#barActual)"
                     name="Año Actual"
-                    barSize={20}
+                    barSize={40}
                   >
                     <LabelList
                       dataKey="variacion"
@@ -1061,7 +1057,7 @@ export default function DashboardComparativas() {
                 const metasMes = { Q: 350, CF: 12000 }; // metas MTD
 
                 return (
-                  <ResponsiveContainer width="100%" height={220}>
+                  <ResponsiveContainer width="100%" height={260}>
                     <ComposedChart
                       layout="vertical"
                       data={[
@@ -1084,14 +1080,14 @@ export default function DashboardComparativas() {
                           proy: vista === "mes" ? proyMes?.CF : proyAnual?.CF,
                         },
                       ]}
-                      margin={{ top: 0, right: 24, left: 8, bottom: 12 }}
+                      margin={{ top: 0, right: 24, left: 8, bottom: 0 }}
                       barCategoryGap="35%"
                     >
                       <CartesianGrid
-                        strokeDasharray="3 3"
-                        horizontal
-                        vertical={false}
-                        strokeOpacity={0.12}
+                        strokeDasharray="2 2" // 👈 punteado
+                        horizontal={true} // 👈 activa las horizontales
+                        vertical={false} // 👈 desactiva las verticales
+                        stroke="#000000ff" // 👈 color gris suave
                       />
 
                       <XAxis
@@ -1144,7 +1140,7 @@ export default function DashboardComparativas() {
                         }}
                       />
 
-                      <Bar dataKey="actual" barSize={22}>
+                      <Bar dataKey="actual" barSize={40}>
                         {["Q", "CF"].map((key, i) => (
                           <Cell
                             key={i}
@@ -1152,7 +1148,6 @@ export default function DashboardComparativas() {
                           />
                         ))}
                       </Bar>
-
                       {/* Líneas de referencia (proyecciones) */}
                       {["Q", "CF"].map((key) => (
                         <React.Fragment key={key}>

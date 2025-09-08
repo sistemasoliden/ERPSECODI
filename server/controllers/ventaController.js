@@ -3,6 +3,9 @@ import Venta from "../models/Venta.js";
 import * as XLSX from "xlsx";
 import { Readable } from "stream";
 
+import mongoose from "mongoose";
+import User from "../models/User.js";
+
 /* ─────────────────────────── Helpers comunes ─────────────────────────── */
 const asArr = (v) =>
   Array.isArray(v)
@@ -103,6 +106,37 @@ const addFaStage = {
     },
   },
 };
+
+
+// Id del rol "Comercial" (mismo del frontend)
+const COMERCIAL_ROLE_IDS = new Set(["68a4f22d27e6abe98157a831"]);
+
+// Id del estado de usuario "Activo" (el que usas en /users/activos)
+const ESTADO_ACTIVO_ID = new mongoose.Types.ObjectId("68a4f3dc27e6abe98157a845");
+
+const isComercialDoc = (u) => {
+  const r = u?.role;
+  if (!r) return false;
+
+  // por id
+  const roleId = typeof r === "string" ? r : (r?._id ? String(r._id) : null);
+  if (roleId && COMERCIAL_ROLE_IDS.has(roleId)) return true;
+
+  // por nombre
+  const roleName = (r?.name || r?.nombre || r?.slug || "").toLowerCase();
+  return roleName === "comercial";
+};
+
+const displayFromUser = (u = {}) =>
+  u.name || [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+
+const normalizeName = (s = "") =>
+  String(s)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
 
 /* ─────────────────────────── CREATE ─────────────────────────── */
 export async function createVenta(req, res) {
@@ -1535,125 +1569,119 @@ export async function getVentasPorProducto(req, res) {
 
 export async function getVentasPorConsultor(req, res) {
   try {
-    // === helpers inline ===
     const asArr = (v) =>
       (Array.isArray(v) ? v : v != null ? [v] : []).filter(Boolean);
     const escRe = (s = "") => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-    // fecha: prioriza fechaActivacion/FECHA_ACTIVACION y cae a fechaIngreso/FECHA_INGRESO
     const addFaStage = {
-  $addFields: {
-    fa: {
-      $toDate: {
-        $ifNull: [
-          "$FECHA_ACTIVACION",
-          {
+      $addFields: {
+        fa: {
+          $toDate: {
             $ifNull: [
-              "$fechaActivacion",
+              "$FECHA_ACTIVACION",
               {
-                $ifNull: ["$FECHA_INGRESO", "$fechaIngreso"],
+                $ifNull: [
+                  "$fechaActivacion",
+                  { $ifNull: ["$FECHA_INGRESO", "$fechaIngreso"] },
+                ],
               },
             ],
           },
-        ],
+        },
       },
-    },
-  },
-};
+    };
 
-    // PDV: boolean o "si"/"no" y campo pdv/PDV
-    function buildPdvMatch(pdvParam) {
-      if (pdvParam == null || pdvParam === "") return null;
-      const yes = /^\s*s[ií]\s*$/i.test(String(pdvParam));
-      const no = /^\s*n[oó]\s*$/i.test(String(pdvParam));
-      if (!yes && !no) return null;
-      const YES = /^\s*s[ií]\s*$/i;
-      const NO = /^\s*n[oó]\s*$/i;
-      return yes
-        ? {
-            $or: [
-              { pdv: true },
-              { PDV: true },
-              { pdv: { $regex: YES } },
-              { PDV: { $regex: YES } },
-            ],
-          }
-        : {
-            $or: [
-              { pdv: false },
-              { PDV: false },
-              { pdv: { $regex: NO } },
-              { PDV: { $regex: NO } },
-            ],
-          };
-    }
-
-    // === filtros ===
-    const { estado, year, month, producto, tipoVenta, consultor, pdv } =
-      req.query;
-
-    const and = [];
+    const {
+      estado,
+      year,
+      month,
+      producto,
+      tipoVenta,
+      consultor,
+      pdv,
+    } = req.query;
 
     const estados = asArr(estado);
-    if (estados.length) {
-      const regs = estados.map((e) => new RegExp(`^\\s*${escRe(e)}\\s*$`, "i"));
-      and.push({ $or: [{ "ESTADO FINAL": { $in: regs } }, { estadoFinal: { $in: regs } }] });
-    }
-
     const productos = asArr(producto);
-    if (productos.length) and.push({ $or: [{ PRODUCTO: { $in: productos } }, { producto: { $in: productos } }] });
-
     const tipos = asArr(tipoVenta);
-    if (tipos.length) {
-      const regs = tipos.map((t) => new RegExp(`^\\s*${escRe(t)}\\s*$`, "i"));
-      and.push({ $or: [{ TIPO_V: { $in: regs } }, { tipoV: { $in: regs } }] });
-    }
-
     const consultores = asArr(consultor);
-    if (consultores.length) {
-      const regs = consultores.map((c) => new RegExp(`^\\s*${escRe(c)}\\s*$`, "i"));
-      and.push({ $or: [{ CONSULTORES: { $in: regs } }, { consultores: { $in: regs } }] });
-    }
 
-    const pdvMatch = buildPdvMatch(pdv);
-    if (pdvMatch) and.push(pdvMatch);
+    const yearsArr = asArr(year)
+      .map((y) => parseInt(y, 10))
+      .filter(Number.isFinite);
+    const monthsArr = asArr(month)
+      .map((m) => parseInt(m, 10))
+      .filter(Number.isFinite);
 
-    const yearsArr = asArr(year).map((y) => parseInt(y, 10)).filter(Number.isFinite);
-    const monthsArr = asArr(month).map((m) => parseInt(m, 10)).filter(Number.isFinite);
+    const YES = /^\s*s[ií]\s*$/i;
+    const NO = /^\s*n[oó]\s*$/i;
 
     // === pipeline ===
-    const pipeline = [addFaStage];
-    if (and.length) pipeline.push({ $match: { $and: and } });
-
-    if (yearsArr.length || monthsArr.length) {
-      pipeline.push({
-        $match: {
-          $expr: {
-            $and: [
-              ...(yearsArr.length ? [{ $in: [{ $year: "$fa" }, yearsArr] }] : []),
-              ...(monthsArr.length ? [{ $in: [{ $month: "$fa" }, monthsArr] }] : []),
-            ],
-          },
-        },
-      });
-    }
-
-    pipeline.push(
+    const pipeline = [
+      addFaStage,
       {
         $project: {
           year: { $year: "$fa" },
           month: { $month: "$fa" },
-          consultor: {
-            $ifNull: ["$CONSULTORES", { $ifNull: ["$consultores", ""] }],
-          },
-          tipo: { $ifNull: ["$TIPO_V", { $ifNull: ["$tipoV", ""] }] },
-          producto: { $ifNull: ["$PRODUCTO", { $ifNull: ["$producto", ""] }] },
-          totalCF: {
-            $ifNull: ["$CF SIN IGV", { $ifNull: ["$cfSinIgv", 0] }],
-          },
-          Q: { $ifNull: ["$Q", { $ifNull: ["$q", 0] }] },
+          consultor: { $ifNull: ["$CONSULTORES", "$consultores"] },
+          producto: { $ifNull: ["$PRODUCTO", "$producto"] },
+          tipo: { $ifNull: ["$TIPO_V", "$tipoV"] },
+          estado: { $ifNull: ["$ESTADO FINAL", "$estadoFinal"] },
+          pdv: { $ifNull: ["$PDV", "$pdv"] },
+          totalCF: { $ifNull: ["$CF SIN IGV", "$cfSinIgv"] },
+          Q: { $ifNull: ["$Q", "$q"] },
         },
       },
+    ];
+
+    const and = [];
+
+    if (estados.length) {
+      const regs = estados.map(
+        (e) => new RegExp(`^\\s*${escRe(e)}\\s*$`, "i")
+      );
+      and.push({ estado: { $in: regs } });
+    }
+
+    if (productos.length) and.push({ producto: { $in: productos } });
+
+    if (tipos.length) {
+      const regs = tipos.map(
+        (t) => new RegExp(`^\\s*${escRe(t)}\\s*$`, "i")
+      );
+      and.push({ tipo: { $in: regs } });
+    }
+
+    if (consultores.length) {
+      const regs = consultores.map(
+        (c) => new RegExp(`^\\s*${escRe(c)}\\s*$`, "i")
+      );
+      and.push({ consultor: { $in: regs } });
+    }
+
+    if (pdv) {
+      if (YES.test(pdv)) and.push({ pdv: { $regex: YES } });
+      else if (NO.test(pdv)) and.push({ pdv: { $regex: NO } });
+    }
+
+    if (yearsArr.length || monthsArr.length) {
+      and.push({
+        $expr: {
+          $and: [
+            ...(yearsArr.length
+              ? [{ $in: ["$year", yearsArr] }]
+              : []),
+            ...(monthsArr.length
+              ? [{ $in: ["$month", monthsArr] }]
+              : []),
+          ],
+        },
+      });
+    }
+
+    if (and.length) pipeline.push({ $match: { $and: and } });
+
+    pipeline.push(
       {
         $group: {
           _id: {
@@ -1693,6 +1721,233 @@ export async function getVentasPorConsultor(req, res) {
     res.json(data);
   } catch (err) {
     console.error("❌ Error en getVentasPorConsultor:", err);
-    res.status(500).json({ error: "Error al obtener ventas por consultor" });
+    res
+      .status(500)
+      .json({ error: "Error al obtener ventas por consultor" });
+  }
+}
+
+
+export async function getRankingConsultores(req, res) {
+  try {
+    const { estado, year, month, producto, tipoVenta, pdv, sortBy = "Q" } = req.query;
+
+    // 1) Comerciales activos (para completar con 0)
+    // 1) Comerciales activos (para completar con 0)
+const activos = await User.find({ estadoUsuario: ESTADO_ACTIVO_ID })
+  .populate("role", "name nombre slug _id")
+  .select("name firstName lastName role")
+  .lean();
+
+const comerciales = activos.filter(isComercialDoc);
+const usersByNorm = new Map(
+  comerciales.map((u) => [normalizeName(displayFromUser(u)), u])
+);
+
+
+    // 2) Filtros de ventas
+    const match = {};
+    const estados = asArr(estado);
+    if (estados.length) match["ESTADO FINAL"] = { $in: estados };
+
+    const productos = asArr(producto);
+    if (productos.length) match.PRODUCTO = { $in: productos };
+
+    const tipos = asArr(tipoVenta);
+    if (tipos.length)
+      match["TIPO_V"] = { $in: tipos.map((t) => new RegExp(`^\\s*${escRe(t)}\\s*$`, "i")) };
+
+    const pdvMatch = buildPdvMatch(pdv);
+    if (pdvMatch) Object.assign(match, pdvMatch);
+
+    const yearsArr = asArr(year).map((y) => parseInt(y, 10)).filter(Number.isFinite);
+    const monthsArr = asArr(month).map((m) => parseInt(m, 10)).filter(Number.isFinite);
+
+    // 3) Aggregate por consultor
+    const pipeline = [addFaStage, { $match: match }];
+
+    if (yearsArr.length || monthsArr.length) {
+      pipeline.push({
+        $match: {
+          $expr: {
+            $and: [
+              ...(yearsArr.length ? [{ $in: [{ $year: "$fa" }, yearsArr] }] : []),
+              ...(monthsArr.length ? [{ $in: [{ $month: "$fa" }, monthsArr] }] : []),
+            ],
+          },
+        },
+      });
+    }
+
+    pipeline.push(
+      {
+        $project: {
+          consultor: {
+            $trim: {
+              input: {
+                $ifNull: ["$CONSULTORES", { $ifNull: ["$consultores", ""] }],
+              },
+            },
+          },
+          CF: { $ifNull: ["$CF SIN IGV", 0] },
+          Q: { $ifNull: ["$Q", 0] },
+        },
+      },
+      {
+        $group: {
+          _id: "$consultor",
+          totalCF: { $sum: "$CF" },
+          totalQ: { $sum: "$Q" },
+        },
+      }
+    );
+
+    const agg = await Venta.aggregate(pipeline).allowDiskUse(true);
+
+    // 4) Merge con users (añadir faltantes con 0)
+    const byNorm = new Map();
+    for (const r of agg) {
+      const raw = r._id || "";
+      const norm = normalizeName(raw);
+      byNorm.set(norm, {
+        consultor: raw || (usersByNorm.get(norm) ? displayFromUser(usersByNorm.get(norm)) : ""),
+        userId: usersByNorm.get(norm)?._id || null,
+        totalCF: Number(r.totalCF || 0),
+        totalQ: Number(r.totalQ || 0),
+      });
+    }
+
+    for (const [norm, u] of usersByNorm.entries()) {
+      if (!byNorm.has(norm)) {
+        byNorm.set(norm, {
+          consultor: displayFromUser(u),
+          userId: u._id,
+          totalCF: 0,
+          totalQ: 0,
+        });
+      }
+    }
+
+    let data = Array.from(byNorm.values());
+
+    // 5) Orden
+    if (sortBy === "CF") data.sort((a, b) => b.totalCF - a.totalCF || a.consultor.localeCompare(b.consultor));
+    else if (sortBy === "Q") data.sort((a, b) => b.totalQ - a.totalQ || a.consultor.localeCompare(b.consultor));
+    else data.sort((a, b) => a.consultor.localeCompare(b.consultor));
+
+    return res.json({ data });
+  } catch (err) {
+    console.error("❌ Error en getRankingConsultores:", err);
+    return res.status(500).json({ error: "Error en ranking de consultores" });
+  }
+}
+
+/* ────────────────────── GET /ventas/consultor-progreso ──────────────────────
+   Serie por meses (01..12) de Q y CF para un consultor (por nombre o userId) */
+export async function getProgresoConsultor(req, res) {
+  try {
+    const {
+      consultor,    // nombre visible
+      userId,       // opcional
+      year = new Date().getFullYear(),
+      estado,
+      producto,
+      tipoVenta,
+      pdv,
+    } = req.query;
+
+    // Resolver nombre si viene userId
+    let targetName = (consultor || "").trim();
+    if (!targetName && userId) {
+  const u = await User.findById(userId).populate("role", "name nombre slug _id").lean();
+  if (u) targetName = displayFromUser(u);
+}
+
+    const normTarget = normalizeName(targetName);
+
+    // Filtros base
+    const match = {};
+    const estados = asArr(estado);
+    if (estados.length) match["ESTADO FINAL"] = { $in: estados };
+
+    const productos = asArr(producto);
+    if (productos.length) match.PRODUCTO = { $in: productos };
+
+    const tipos = asArr(tipoVenta);
+    if (tipos.length)
+      match["TIPO_V"] = { $in: tipos.map((t) => new RegExp(`^\\s*${escRe(t)}\\s*$`, "i")) };
+
+    const pdvMatch = buildPdvMatch(pdv);
+    if (pdvMatch) Object.assign(match, pdvMatch);
+
+    // Filtro por año
+    const y = parseInt(year, 10);
+    const start = new Date(`${String(y).padStart(4, "0")}-01-01T00:00:00.000Z`);
+    const end = new Date(`${String(y + 1).padStart(4, "0")}-01-01T00:00:00.000Z`);
+
+    const pipeline = [
+      addFaStage,
+      {
+        $match: {
+          ...match,
+          fa: { $gte: start, $lt: end },
+        },
+      },
+      {
+        $addFields: {
+          consultorRaw: {
+            $trim: {
+              input: {
+                $ifNull: ["$CONSULTORES", { $ifNull: ["$consultores", ""] }],
+              },
+            },
+          },
+        },
+      },
+      // Filtrar por igualdad “suave” al nombre buscado
+      {
+        $match: {
+          $expr: {
+            $regexMatch: {
+              input: "$consultorRaw",
+              regex: new RegExp(`^\\s*${escRe(targetName)}\\s*$`, "i"),
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          mes: { $dateToString: { format: "%m", date: "$fa" } },
+          CF: { $ifNull: ["$CF SIN IGV", 0] },
+          Q: { $ifNull: ["$Q", 0] },
+        },
+      },
+      {
+        $group: {
+          _id: "$mes",
+          totalCF: { $sum: "$CF" },
+          totalQ: { $sum: "$Q" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ];
+
+    const raw = await Venta.aggregate(pipeline).allowDiskUse(true);
+    const map = Object.fromEntries(raw.map((r) => [r._id, r]));
+
+    const MESES = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+    const data = MESES.map((mm) => ({
+      mes: mm,
+      CF: Number(map[mm]?.totalCF || 0),
+      Q: Number(map[mm]?.totalQ || 0),
+    }));
+
+    return res.json({
+      meta: { year: y, consultor: targetName || null, consultorNorm: normTarget },
+      data,
+    });
+  } catch (err) {
+    console.error("❌ Error en getProgresoConsultor:", err);
+    return res.status(500).json({ error: "Error en progreso del consultor" });
   }
 }
