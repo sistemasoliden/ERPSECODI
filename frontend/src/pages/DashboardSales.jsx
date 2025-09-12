@@ -372,9 +372,9 @@ export default function DashboardComparativas() {
 
   /* ============================== RETURN ============================== */
   return (
-    <div className="min-h-[calc(100vh-88px)] w-full bg-gray-200 dark:bg-slate-950 p-4 md:p-6">
+    <div className="min-h-[calc(100vh-88px)] w-full  bg-[#ebe8e8] dark:bg-slate-950 p-4 md:p-6">
       {/* 🔹 Bloque de filtros (igual que Ventas.jsx) */}
-      <div className="relative z-30 -mt-4 px-6">
+      <div className="relative z-30 -mt-1 px-6">
         <FiltrosWrapper>
           {(f) => (
             <SyncFiltros value={f} onChange={setFiltros}>
@@ -650,7 +650,7 @@ export default function DashboardComparativas() {
                       data={[...barData].sort((a, b) =>
                         a.name.localeCompare(b.name)
                       )}
-                      margin={{ top: 12, right: 12, left: 12, bottom: 18 }}
+                      margin={{ top: 20, right: 12, left: 12, bottom: 18 }}
                     >
                       {/* 🎨 Degradado elegante para la barra */}
                       <defs>

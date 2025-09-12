@@ -102,7 +102,7 @@ const fmtPEN = (n) =>
   new Intl.NumberFormat("es-PE", {
     style: "currency",
     currency: "PEN",
-    minimumFractionDigits: 2,
+    minimumFractionDigits: 3,
   }).format(Number(n || 0));
 
 /* ===================== Helpers de sumatoria ===================== */
@@ -289,7 +289,7 @@ export default function ReportVentasConsultores() {
       g[year][monthName][c][r.tipo][r.producto].push(r);
     }
 
-    // 2) Inyectar año/mes actual SOLO si NO hay filtro de año/mes
+    // 3) Inyectar año/mes actual SOLO si NO hay filtro de año/mes
     const noYMFilters = !filtros?.anio && !filtros?.mes;
     if (noYMFilters) {
       const currentYear = new Date().getFullYear();
@@ -338,7 +338,7 @@ export default function ReportVentasConsultores() {
 
   /* ===================== Render ===================== */
   return (
-    <div className="min-h-[calc(100vh-88px)] bg-gray-200 dark:bg-slate-950 p-4 md:p-6">
+    <div className="min-h-[calc(100vh-88px)] bg-[#ebe8e8] dark:bg-slate-950 p-4 md:p-6">
       {loading && (
         <Loader
           variant="fullscreen"
@@ -359,19 +359,19 @@ export default function ReportVentasConsultores() {
         </FiltrosWrapper>
       </div>
       {/* Tabla */}
-      <div className="mt-4 overflow-hidden border border-slate-200 bg-white/70 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/60 relative">
+      <div className="mt-4 overflow-hidden border border-slate-200 bg-white/70 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/60 relative ml-8 mr-8">
         <div className="relative overflow-x-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full table-fixed text-xs border">
             <thead className="bg-gradient-to-r from-gray-100 to-gray-200 dark:from-slate-800 dark:to-slate-700 text-gray-700 dark:text-gray-200 capitalize text-xs font-semibold">
               <tr>
                 {/* 7 columnas que suman ~100% */}
-                <th className="w-[10%] px-4 py-2 text-center">Año</th>
-                <th className="w-[12%] px-4 py-2 text-center">Mes</th>
-                <th className="w-[24%] px-4 py-2 text-center">Consultor</th>
-                <th className="w-[18%] px-4 py-2 text-center">Tipo</th>
-                <th className="w-[18%] px-4 py-2 text-center">Producto</th>
-                <th className="w-[9%] px-4 py-2 text-center">CF</th>
-                <th className="w-[9%] px-4 py-2 text-center">Q</th>
+                <th className="w-[10%] px-4 py-3 text-center">Año</th>
+                <th className="w-[12%] px-4 py-3 text-center">Mes</th>
+                <th className="w-[24%] px-4 py-3 text-center">Consultor</th>
+                <th className="w-[18%] px-4 py-3 text-center">Tipo</th>
+                <th className="w-[18%] px-4 py-3 text-center">Producto</th>
+                <th className="w-[9%] px-4 py-3 text-center">CF</th>
+                <th className="w-[9%] px-4 py-3 text-center">Q</th>
               </tr>
             </thead>
 
@@ -382,12 +382,12 @@ export default function ReportVentasConsultores() {
                   <React.Fragment key={year}>
                     {/* Año */}
                     <tr
-                      className="bg-red-900 text-white cursor-pointer hover:bg-red-600 transition"
+                      className="bg-red-800 text-white cursor-pointer hover:bg-red-900 transition"
                       onClick={() => toggleYear(year)}
                     >
-                      <td className="px-4 py-2 font-bold tracking-wide text-center text-xs">
+                      <td className="px-4 py-3 font-bold tracking-wide text-center text-xs">
                         <ChevronDown
-                          className={`inline w-3 h-3 mr-2 transition-transform duration-300 ${
+                          className={`inline w-3 h-3 mr-3 transition-transform duration-300 ${
                             expandedYears[year] ? "rotate-180" : ""
                           }`}
                         />
@@ -412,8 +412,8 @@ export default function ReportVentasConsultores() {
                                 onClick={() => toggleMonth(year, month)}
                               >
                                 <td></td>
-                                <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">
-                                  <div className="flex items-center gap-2 pl-8">
+                                <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200">
+                                  <div className="flex items-center gap-3 pl-8">
                                     <ChevronDown
                                       className={`w-4 h-4 transition-transform duration-300 ${
                                         expandedMonths[`${year}-${month}`]
@@ -427,10 +427,10 @@ export default function ReportVentasConsultores() {
                                 <td></td>
                                 <td></td>
                                 <td></td>
-                                <td className="px-4 py-2 font-semibold text-red-800">
+                                <td className="px-4 py-3 font-semibold text-red-800">
                                   {fmtPEN(mSum.cf)}
                                 </td>
-                                <td className="px-4 py-2 font-semibold text-red-800">
+                                <td className="px-4 py-3 font-semibold text-red-800">
                                   {fmtNumber(mSum.q, 0)}
                                 </td>
                               </tr>
@@ -462,8 +462,8 @@ export default function ReportVentasConsultores() {
                                         >
                                           <td></td>
                                           <td></td>
-                                          <td className="px-4 py-2 font-semibold text-gray-700 dark:text-gray-200">
-                                            <div className="flex items-center gap-2 pl-6">
+                                          <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">
+                                            <div className="flex items-center gap-3 pl-6">
                                               <ChevronDown
                                                 className={`w-4 h-4 transition-transform duration-300 ${
                                                   expandedConsultores[cKey]
@@ -478,10 +478,10 @@ export default function ReportVentasConsultores() {
                                           </td>
                                           <td></td>
                                           <td></td>
-                                          <td className="px-4 py-2 text-xs font-semibold text-green-800">
+                                          <td className="px-4 py-3 text-xs font-semibold text-blue-900">
                                             {fmtPEN(cSum.cf)}
                                           </td>
-                                          <td className="px-4 py-2 text-xs font-semibold text-green-800">
+                                          <td className="px-4 py-3 text-xs font-semibold text-blue-900">
                                             {fmtNumber(cSum.q, 0)}
                                           </td>
                                         </tr>
@@ -516,8 +516,8 @@ export default function ReportVentasConsultores() {
                                                   <td></td>
                                                   <td></td>
                                                   <td></td>
-                                                  <td className="px-4 py-2 font-medium text-gray-700 dark:text-gray-200">
-                                                    <div className="flex items-center gap-2 pl-8">
+                                                  <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-200">
+                                                    <div className="flex items-center gap-3 pl-8">
                                                       <ChevronDown
                                                         className={`w-4 h-4 transition-transform duration-300 ${
                                                           expandedTipos[tKey]
@@ -529,10 +529,10 @@ export default function ReportVentasConsultores() {
                                                     </div>
                                                   </td>
                                                   <td></td>
-                                                  <td className="px-4 py-2 text-xs font-semibold text-slate-800">
+                                                  <td className="px-4 py-3 text-xs font-semibold text-slate-800">
                                                     {fmtPEN(tSum.cf)}
                                                   </td>
-                                                  <td className="px-4 py-2 text-xs font-semibold text-slate-800">
+                                                  <td className="px-4 py-3 text-xs font-semibold text-slate-800">
                                                     {fmtNumber(tSum.q, 0)}
                                                   </td>
                                                 </tr>
@@ -561,13 +561,13 @@ export default function ReportVentasConsultores() {
                                                         <td></td>
                                                         <td></td>
                                                         <td></td>
-                                                        <td className="px-4 py-2 text-gray-700 dark:text-gray-200 text-center">
+                                                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200 text-center">
                                                           {prod}
                                                         </td>
-                                                        <td className="px-4 py-2 text-xs">
+                                                        <td className="px-4 py-3 text-xs">
                                                           {fmtPEN(pSum.cf)}
                                                         </td>
-                                                        <td className="px-4 py-2 text-xs">
+                                                        <td className="px-4 py-3 text-xs">
                                                           {fmtNumber(pSum.q, 0)}
                                                         </td>
                                                       </tr>

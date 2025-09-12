@@ -73,43 +73,52 @@ const tsFrom = (row) => {
 };
 
 // Orden de columnas solicitado
+// Reemplaza tu COLUMN_ORDER por este (claves camelCase que sí llegan del backend)
 const COLUMN_ORDER = [
-  "FECHA_INGRESO",
-  "FECHA_ACTIVACION",
-  "RUC",
-  "RAZON SOCIAL CLIENTE",
-  "ESTADO FINAL",
-  "SEC_PROYECTO_SOT",
-  "TIPO_V",
-  "PRODUCTO",
-  "TIPO DE VENTA",
-  "LINEAS",
-  "CUENTA",
-  "EQUIPO",
-  "SALESFORCE",
-  "Loteo",
-  "CONSULTORES",
-  "DNI_CONSULTOR",
-  "SUPERVISOR",
-  "CONSULTOR REGISTRADO",
-  "Q",
-  "CF SIN IGV",
-  "CF INC IGV",
-  "DISTRITO",
-  "PLAN",
-  "COSTO EQUIPO",
-  "PDV",
-  "MOTIVO RECHAZO",
-  "SEGMENTO",
-  "DSCTO FACTURACION",
-  "PC CON IGV",
-  "PC SIN IGV",
-  "NOMBRE",
-  "NUMERO",
-  "CORREO",
-  "NOMBRE2",
-  "NUMERO3",
-  "CORREO4",
+  "fechaIngreso",
+  "fechaActivacion",
+  "ruc",
+  "razonSocial",
+  "segmento",
+  "estadoFinal",
+  "motivoRechazo",
+
+  "consultores",
+  "dniConsultor",
+  "supervisor",
+  "consultorRegistrado",
+
+  "plan",
+  "dsctoFacturacion",
+  "tipoV",
+  "producto",
+  "pdv",
+
+  "q",
+  "cfSinIgv",
+  "cfConIgv",
+  "cfDescSinIgv",
+  "cfDescConIgv",
+
+  "equipo",
+  "costoEquipo",
+  "lineas",
+
+  "secProyectoSot",
+
+  "cuenta",
+
+  "salesforce",
+  "loteo",
+
+  "distrito",
+
+  "nombre",
+  "numero",
+  "correo",
+  "nombre2",
+  "numero3",
+  "correo4",
 ];
 
 const HEADERS_MAP = {
@@ -117,6 +126,8 @@ const HEADERS_MAP = {
   fechaActivacion: "Fecha de Activación",
   ruc: "RUC",
   razonSocial: "Razón Social",
+  segmento: "Segmento",
+
   estadoFinal: "Estado Final",
   secProyectoSot: "Sec. Proyecto SOT",
   tipoV: "Tipo de Venta",
@@ -133,14 +144,14 @@ const HEADERS_MAP = {
   q: "Q de Lineas",
   cfSinIgv: "CF sin IGV",
   cfConIgv: "CF con IGV",
-  pcSinIgv: "PC sin IGV",
-  pcConIgv: "PC con IGV",
+  cfDescSinIgv: "CF Descuento sin IGV",
+  cfDescConIgv: "CF Descuento con IGV",
   distrito: "Distrito",
   plan: "Plan",
   costoEquipo: "Costo Equipo",
   pdv: "PDV",
   motivoRechazo: "Motivo Rechazo",
-  segmento: "Segmento",
+
   dsctoFacturacion: "Descuento Facturación",
   nombre: "Nombre",
   numero: "Número",
@@ -149,6 +160,52 @@ const HEADERS_MAP = {
   numero3: "Número 2",
   correo4: "Correo 2",
 };
+
+// Min width por columna (ajusta a gusto)
+// Usa camelCase, igual que la data que pintas en la tabla
+const COL_MIN_W = {
+  fechaIngreso: "min-w-[100px] whitespace-nowrap",
+  fechaActivacion: "min-w-[100px] whitespace-nowrap",
+  ruc: "min-w-[120px] whitespace-nowrap tabular-nums",
+  razonSocial: "min-w-[100px] max-w-[360px] whitespace-nowrap",
+  segmento: "min-w-[100px] whitespace-nowrap",
+
+  estadoFinal: "min-w-[100px] whitespace-nowrap",
+  secProyectoSot: "min-w-[100px] whitespace-nowrap",
+
+  tipoV: "min-w-[100px] whitespace-nowrap",
+  producto: "min-w-[100px] whitespace-nowrap",
+  lineas: "min-w-[100px] whitespace-nowrap tabular-nums text-right",
+  cuenta: "min-w-[100px] whitespace-nowrap tabular-nums text-right",
+  equipo: "min-w-[100px] whitespace-nowrap",
+  salesforce: "min-w-[100px] whitespace-nowrap",
+  loteo: "min-w-[100px] whitespace-nowrap",
+
+  q: "min-w-[80px] whitespace-nowrap tabular-nums text-right",
+  cfSinIgv: "min-w-[100px] whitespace-nowrap tabular-nums text-right",
+  cfConIgv: "min-w-[100px] whitespace-nowrap tabular-nums text-right",
+  cfDescSinIgv: "min-w-[100px] whitespace-nowrap tabular-nums text-right",
+  cfDescConIgv: "min-w-[100px] whitespace-nowrap tabular-nums text-right",
+
+  distrito: "min-w-[100px] whitespace-nowrap",
+  plan: "min-w-[100px] whitespace-nowrap",
+  costoEquipo: "min-w-[100px] whitespace-nowrap tabular-nums text-right",
+  pdv: "min-w-[50px] whitespace-nowrap",
+  motivoRechazo: "min-w-[100px] whitespace-nowrap",
+
+  dsctoFacturacion: "min-w-[100px] whitespace-nowrap",
+  nombre: "min-w-[100px] whitespace-nowrap",
+  numero: "min-w-[100px] whitespace-nowrap",
+  correo: "min-w-[100px] whitespace-nowrap",
+  nombre2: "min-w-[100px] whitespace-nowrap",
+  numero3: "min-w-[100px] whitespace-nowrap",
+  correo4: "min-w-[100px] whitespace-nowrap",
+};
+
+// fallback si falta alguna
+const mw = (key) => COL_MIN_W[key] || "min-w-[140px] whitespace-nowrap";
+
+// fallback si no está en el mapa
 
 export default function Ventas() {
   const [ventas, setVentas] = useState([]);
@@ -235,12 +292,10 @@ export default function Ventas() {
   // columnas dinámicas según orden solicitado
   const campos = useMemo(() => {
     if (ventas.length === 0) return [];
-    const keys = Object.keys(ventas[0] || {});
-    // primero las del orden fijo que existan:
-    const ordered = COLUMN_ORDER.filter((k) => keys.includes(k));
-    // luego el resto (sin _id)
-    const rest = keys.filter((k) => k !== "_id" && !ordered.includes(k));
-    return [...ordered, ...rest];
+    const present = new Set();
+    for (const r of ventas) for (const k of Object.keys(r)) present.add(k);
+    // orden fijo, solo las que existen en algún registro
+    return COLUMN_ORDER.filter((k) => present.has(k));
   }, [ventas]);
 
   // toggle fila (con _id)
@@ -304,14 +359,57 @@ export default function Ventas() {
 
   const handleDuplicate = async () => {
     if (selected.size === 0) return;
+
+    const ids = Array.from(selected);
+    const selCount = ids.length;
+
+    const { value: times, isConfirmed } = await Swal.fire({
+      icon: "question",
+      title: "Generar copias",
+      text: `Seleccionaste ${selCount} venta${
+        selCount > 1 ? "s" : ""
+      }. ¿Cuántas copias quieres por cada una?`,
+      input: "number",
+      inputValue: 1,
+      inputAttributes: { min: 1, max: 50, step: 1 },
+      inputLabel: "Cantidad (max 50)",
+      showCancelButton: true,
+      confirmButtonText: "Generar",
+      cancelButtonText: "Cancelar",
+      buttonsStyling: false,
+      customClass: {
+        popup: "w-[420px] max-w-full mt-16 rounded-lg",
+        title: "text-base font-semibold text-slate-800",
+        htmlContainer: "text-slate-600",
+        confirmButton:
+          "bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700",
+        cancelButton:
+          "bg-slate-200 text-slate-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-slate-300 ml-12",
+        input:
+          "border border-slate-300 text-center rounded px-3 py-2 text-sm w-20 mx-auto block",
+      },
+      preConfirm: (val) => {
+        const n = Number(val);
+        if (!Number.isFinite(n) || n < 1 || n > 50) {
+          Swal.showValidationMessage("Ingresa un número entre 1 y 50");
+          return false;
+        }
+        return n;
+      },
+    });
+
+    if (!isConfirmed) return;
+
     try {
       setLoading(true);
-      const ids = Array.from(selected);
-      // usa endpoint batch de backend
-      await api.post("/ventas/duplicate", { ids });
+      await api.post("/ventas/duplicate", { ids, times }); // cambia la ruta si renombraste el endpoint
       await fetchVentas();
+
+      setTimeout(() => setToast(null), 3500);
     } catch (e) {
-      console.error("❌ Error duplicando:", e);
+      console.error("❌ Error generando copias:", e);
+      setToast({ kind: "error", msg: "No se pudo generar las copias." });
+    } finally {
       setLoading(false);
     }
   };
@@ -379,7 +477,9 @@ export default function Ventas() {
   }, [filtros, searchTerm]); // 👈 agrega searchTerm en dependencias
 
   return (
-    <div className="min-h-[calc(100vh-88px)] bg-gray-200 dark:bg-slate-950 p-4 md:p-6">
+    <div className="min-h-[calc(100vh-88px)]  bg-[#ebe8e8] dark:bg-slate-950 p-4 md:p-6">
+      {" "}
+      {/* bg-zinc-100 */}
       {loading && (
         <Loader
           variant="fullscreen"
@@ -387,11 +487,8 @@ export default function Ventas() {
           navbarHeight={88}
         />
       )}
-
-      {/* Filtros (arriba, auto-aplican) */}
-
       {/* Filtros (arriba, compactos) */}
-      <div className="relative z-30 -mt-4 px-6">
+      <div className="relative z-30 -mt-1 px-6">
         <FiltrosWrapper>
           {(f) => (
             <SyncFiltros
@@ -406,9 +503,9 @@ export default function Ventas() {
           )}
         </FiltrosWrapper>
       </div>
-
       {/* Header + Toolbar */}
-      <div className="-mt-6 max-w-full dark:border-slate-800 dark:from-slate-900 dark:to-slate-950">
+      <div className="-mt-2 max-w-full dark:border-slate-800 dark:from-slate-900 dark:to-slate-950">
+        {/* Botones */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-6 py-3">
           {/* Estado de selección */}
           <div className="flex items-center gap-3">
@@ -436,61 +533,64 @@ export default function Ventas() {
           </div>
 
           {/* Acciones */}
-          {/* Acciones */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             {canManageVentas && (
               <>
+                {/* Editar */}
                 <button
                   onClick={handleEdit}
                   disabled={selected.size !== 1 || loading}
                   title="Editar"
-                  className="min-w-[100px] h-9 inline-flex items-center justify-center gap-1.5 rounded-md 
-             border border-gray-400 bg-gray-200 text-[12px] font-medium text-slate-700 shadow-sm
-             hover:bg-slate-100 transition disabled:opacity-50 disabled:cursor-not-allowed
-             dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  className="min-w-[110px] h-10 inline-flex items-center justify-center gap-2 rounded-md
+          border border-slate-400 bg-slate-200 text-xs font-medium text-slate-800 shadow-sm
+          hover:bg-slate-300 transition disabled:opacity-50 disabled:cursor-not-allowed
+          dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
                 >
-                  ✏️ Editar
+                  <span>Editar</span>
                 </button>
 
+                {/* Generar Copia */}
                 <button
                   onClick={handleDuplicate}
                   disabled={!someSelected || loading}
-                  title="Duplicar"
-                  className="min-w-[100px] h-9 inline-flex items-center justify-center gap-1.5 rounded-md 
-             border border-indigo-500/30 bg-indigo-600 text-[12px] font-medium text-white shadow-sm
-             hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed
-             dark:border-indigo-700/40 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                  title="Generar Copia"
+                  className="min-w-[140px] h-10 inline-flex items-center justify-center gap-2 rounded-md
+          border border-purple-600 bg-purple-600 text-xs  text-white shadow-sm
+          hover:bg-purple-800 transition disabled:opacity-50 disabled:cursor-not-allowed
+          dark:border-purple-700 dark:bg-purple-800 dark:hover:bg-purple-700"
                 >
-                  📄 Duplicar
+                  <span>Generar Copia</span>
                 </button>
 
+                {/* Eliminar */}
                 <button
                   onClick={handleDelete}
                   disabled={!someSelected || loading}
                   title="Eliminar"
-                  className="min-w-[100px] h-9 inline-flex items-center justify-center gap-1.5 rounded-md 
-             border border-red-500/30 bg-red-600 text-[12px] font-medium text-white shadow-sm
-             hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed
-             dark:border-red-700/40 dark:bg-red-600 dark:hover:bg-red-500"
+                  className="min-w-[130px] h-10 inline-flex items-center justify-center gap-2 rounded-md
+          border border-red-700 bg-red-800 text-xs  text-white shadow-sm
+          hover:bg-red-900 transition disabled:opacity-50 disabled:cursor-not-allowed
+          dark:border-red-800 dark:bg-red-900 dark:hover:bg-red-800"
                 >
-                  🗑️ Eliminar
+                  <span>Eliminar</span>
                 </button>
               </>
             )}
 
-            {/* Exportar visible para todos */}
+            {/* Exportar */}
             <button
               onClick={handleExport}
               disabled={loading || exporting}
               title="Exportar Excel"
-              className="min-w-[120px] h-9 inline-flex items-center justify-center gap-1.5 rounded-md 
-         border border-emerald-500/30 bg-emerald-600 text-[12px] font-medium text-white shadow-sm
-         hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed
-         dark:border-emerald-700/40 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+              className="min-w-[130px] h-10 inline-flex items-center justify-center gap-2 rounded-md
+      border border-emerald-700 bg-emerald-800 text-xs  text-white shadow-sm
+      hover:bg-emerald-900 transition disabled:opacity-50 disabled:cursor-not-allowed
+      dark:border-emerald-800 dark:bg-emerald-900 dark:hover:bg-emerald-800"
             >
-              {exporting ? "⏳ Exportando…" : "Exportar"}
+              {exporting ? "Exportando…" : "Exportar"}
             </button>
 
+            {/* Buscar */}
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -499,14 +599,15 @@ export default function Ventas() {
                 onChange={(e) => {
                   const term = e.target.value;
                   setSearchTerm(term);
-                  fetchVentas(true, term); // 👈 busca sin loader
+                  fetchVentas(true, term);
                 }}
-                className="h-9 px-3 rounded-md border border-slate-300 text-[12px] shadow-sm
-             focus:outline-none focus:ring-2 focus:ring-blue-500
-             dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
+                className="h-10 px-3 rounded-md border border-slate-300 text-xs shadow-sm
+        focus:outline-none focus:ring-2 focus:ring-purple-500 text-center
+        dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200"
               />
             </div>
 
+            {/* Nueva Venta */}
             {canManageVentas && (
               <button
                 onClick={() => {
@@ -514,27 +615,26 @@ export default function Ventas() {
                   setShowForm(true);
                 }}
                 title="Añadir nueva"
-                className="min-w-[120px] h-9 inline-flex items-center justify-center gap-1.5 rounded-md 
-           border border-blue-500/30 bg-blue-600 text-[12px] font-medium text-white shadow-sm
-           hover:bg-blue-700 transition
-           dark:border-blue-700/40 dark:bg-blue-600 dark:hover:bg-blue-500"
+                className="min-w-[130px] h-10 inline-flex items-center justify-center gap-2 rounded-md
+        border border-blue-700 bg-blue-800 text-xs text-center  text-white shadow-sm
+        hover:bg-blue-900 transition
+        dark:border-blue-800 dark:bg-blue-900 dark:hover:bg-blue-800"
               >
-                Ingresar Venta
+                <span>Ingresar Venta</span>
               </button>
             )}
           </div>
         </div>
       </div>
-
       {/* Modal crear/editar */}
       {showForm && (
         <div
-          className="fixed inset-x-0 top-[88px] bottom-0 z-40 flex items-start justify-center 
-                  bg-slate-900/30 backdrop-blur-sm p-6"
+          className="fixed inset-0 z-40 flex justify-center 
+             bg-slate-900/30 backdrop-blur-xl p-6"
         >
           <div
-            className="relative flex max-h-[75vh] w-full max-w-2xl flex-col 
-                    rounded-xl border border-slate-200 bg-white shadow-xl"
+            className="mt-24 relative flex max-h-[75vh] w-full max-w-2xl flex-col 
+                    rounded-md border border-slate-200 bg-white shadow-xl"
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-2">
@@ -553,37 +653,37 @@ export default function Ventas() {
             {/* Contenido scrollable */}
             <div className="flex-1 overflow-y-auto p-4">
               <VentaForm
-  key={editingVenta?._id || "new"}
-  initialData={editingVenta || undefined}
-  onCreated={(newVenta) => {
-    if (!newVenta?._id) return;
-    setShowForm(false);
-    setVentas((prev) => [newVenta, ...prev]);
-  }}
-  onSaved={(updatedVenta) => {
-    if (!updatedVenta?._id) return;
-    setShowForm(false);
-    setVentas((prev) =>
-      prev.map((v) => (v._id === updatedVenta._id ? updatedVenta : v))
-    );
-  }}
-  onCancel={() => setShowForm(false)}
-/>
-
+                key={editingVenta?._id || "new"}
+                initialData={editingVenta || undefined}
+                onCreated={(newVenta) => {
+                  if (!newVenta?._id) return;
+                  setShowForm(false);
+                  setVentas((prev) => [newVenta, ...prev]);
+                }}
+                onSaved={(updatedVenta) => {
+                  if (!updatedVenta?._id) return;
+                  setShowForm(false);
+                  setVentas((prev) =>
+                    prev.map((v) =>
+                      v._id === updatedVenta._id ? updatedVenta : v
+                    )
+                  );
+                }}
+                onCancel={() => setShowForm(false)}
+              />
             </div>
           </div>
         </div>
       )}
-
       {/* Tabla */}
-      <div className="mt-4 overflow-hidden border border-slate-200 bg-white/70 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/60 relative">
+      <div className="mt-4 overflow-hidden border border-slate-200 bg-white/70 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/60 relative ml-8 mr-6">
         <div className="relative overflow-x-auto">
-          <table className="min-w-full text-[12px]">
-            <thead className="sticky top-0 z-10 bg-gradient-to-b from-slate-50 to-white text-center dark:from-slate-900 dark:to-slate-950">
+          <table className="table-auto w-full text-[12px]">
+            <thead className="sticky top-0 z-10 bg-white text-center dark:bg-slate-900">
               <tr className="h-10">
-                {/* Columna de selección */}
-                <th className="w-[42px] border-b px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-slate-600">
-                  <div className="flex justify-center mt-1">
+                {/* THEAD: columna de selección */}
+                <th className="w-[56px] border-b px-0 py-2 text-center text-[11px] font-bold tracking-wide text-slate-600">
+                  <div className="flex items-center justify-center pl-3">
                     <input
                       type="checkbox"
                       className="h-3 w-3 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -598,7 +698,10 @@ export default function Ventas() {
                 {campos.map((col) => (
                   <th
                     key={col}
-                    className="border-b px-3 py-2 text-center text-[11px] font-bold tracking-wide text-black"
+                    className={`border-b px-3 py-3 text-[11px] font-semibold tracking-wide text-slate-700 ${mw(
+                      col
+                    )}`}
+                    title={HEADERS_MAP[col] ?? col}
                   >
                     {HEADERS_MAP[col] ?? col}
                   </th>
@@ -606,21 +709,7 @@ export default function Ventas() {
               </tr>
             </thead>
 
-            <tbody className="text-center text-[10px] divide-y divide-slate-100">
-              {!loading && ventas.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={campos.length + 1}
-                    className="py-10 text-center text-[10px] text-slate-500"
-                  >
-                    <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
-                      <span className="text-base">🗂️</span>
-                      <span>No hay resultados para la búsqueda</span>
-                    </div>
-                  </td>
-                </tr>
-              )}
-
+            <tbody className="text-center text-[10.5px] divide-y divide-slate-100">
               {!loading &&
                 ventas.map((v, idx) => {
                   const canSelect = !!v._id;
@@ -628,34 +717,32 @@ export default function Ventas() {
 
                   return (
                     <tr
-                      key={`${v._id || idx}`}
-                      className={[
-                        "h-10 transition",
-                        idx % 2 === 0 ? "bg-white" : "bg-slate-50",
-                        "hover:bg-slate-50",
-                        checked
-                          ? "bg-emerald-50/70 ring-1 ring-inset ring-emerald-200"
-                          : "",
-                      ].join(" ")}
+                      key={v._id || idx}
+                      className={`h-10 ${idx % 2 ? "bg-slate-50" : "bg-white"}`}
                     >
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          className="h-3 w-3 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
-                          checked={checked}
-                          disabled={!canSelect}
-                          onChange={() => toggleRow(v._id)}
-                          aria-label={`Seleccionar fila ${idx + 1}`}
-                        />
+                      {/* Columna de selección (reemplaza el <td> ... </td> que tenías) */}
+                      <td className="w-[56px] px-0">
+                        <div className="flex h-10 items-center justify-center pl-3">
+                          <input
+                            type="checkbox"
+                            className="h-3 w-3 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
+                            checked={checked}
+                            disabled={!canSelect}
+                            onChange={() => toggleRow(v._id)}
+                            aria-label={`Seleccionar fila ${idx + 1}`}
+                          />
+                        </div>
                       </td>
 
+                      {/* Resto de columnas dinámicas */}
                       {campos.map((col) => (
                         <td
                           key={col}
-                          className="max-w-[320px] truncate px-3 py-2 text-[11px] text-slate-700"
-                          title={v[col] != null ? String(v[col]) : ""}
+                          className={`px-3 py-3.5 text-slate-700 ${mw(col)}`}
                         >
-                          {v[col] != null ? String(v[col]) : ""}
+                          <div className="truncate">
+                            {v[col] != null ? String(v[col]) : ""}
+                          </div>
                         </td>
                       ))}
                     </tr>
@@ -663,48 +750,95 @@ export default function Ventas() {
                 })}
             </tbody>
           </table>
-
-          {/* Sombras laterales para el scroll */}
         </div>
       </div>
-
       {/* Paginación */}
-      <div className="mt-3 flex flex-wrap items-center justify-end gap-2 text-[12px] text-black">
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2 text-[12px] text-black mr-6">
         <label className="mr-1">Filas:</label>
-        <select
-          className="border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={limit}
-          onChange={(e) => {
-            setLimit(Number(e.target.value));
-            setPage(1);
-          }}
-        >
-          {[10, 25, 50, 100].map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
+        <div className="relative inline-flex">
+          <select
+            className="appearance-none h-9  border border-slate-300 bg-white px-3 pr-8 text-xs text-slate-700 shadow-sm
+               focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
+               dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200"
+            value={limit}
+            onChange={(e) => {
+              setLimit(Number(e.target.value));
+              setPage(1);
+            }}
+            aria-label="Filas por página"
+          >
+            {[10, 25, 50, 100].map((n) => (
+              <option key={n} value={n} className="tabular-nums">
+                {n}
+              </option>
+            ))}
+          </select>
 
-        <div className="ml-2 inline-flex overflow-hidden border border-slate-300 bg-white shadow-sm">
+          {/* chevron */}
+          <svg
+            className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.7a.75.75 0 011.08 1.04l-4.25 4.25a.75.75 0 01-1.06 0L5.21 8.27a.75.75 0 01.02-1.06z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </div>
+
+        <div className="ml-2 inline-flex items-stretch overflow-hidden  border border-slate-300 bg-white shadow-sm">
           <button
-            className="px-3 py-1.5 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1 px-3 py-2 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:text-slate-300 disabled:pointer-events-none"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1 || loading}
             aria-label="Página anterior"
           >
-            ◀
+            {/* chevron-left */}
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M12.707 15.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4A1 1 0 1112.707 7.7L9.414 11l3.293 3.293a1 1 0 010 1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span className="hidden sm:inline">Ant</span>
           </button>
-          <div className="px-3 py-1.5 text-slate-700">
-            Página <b>{page}</b> de <b>{totalPages}</b>
+
+          <div className="flex items-center bg-slate-50/60 px-3 py-1.5 text-slate-700 border-l border-r border-slate-200 select-none">
+            Página&nbsp;
+            <b className="tabular-nums">{page}</b>
+            &nbsp;/&nbsp;
+            <b className="tabular-nums">{totalPages}</b>
           </div>
+
           <button
-            className="px-3 py-1.5 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:text-slate-300 disabled:pointer-events-none"
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages || loading}
             aria-label="Página siguiente"
           >
-            ▶
+            <span className="hidden sm:inline">Sig</span>
+            {/* chevron-right */}
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M7.293 4.293a1 1 0 011.414 0L13 8.586a1 1 0 010 1.414l-4.293 4.293a1 1 0 11-1.414-1.414L10.586 10 7.293 6.707a1 1 0 010-1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
           </button>
         </div>
 

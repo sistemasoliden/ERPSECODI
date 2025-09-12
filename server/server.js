@@ -27,7 +27,8 @@ import consultorRegistradoRoutes from "./routes/consultorRegistradoRoutes.js";
 import segmentoEmpresaRoutes from "./routes/segmentoEmpresaRoutes.js";
 import ventasActivacionRoutes from "./routes/ventasActivacionRoutes.js";
 import opportunityRoutes from "./routes/opportunityRoutes.js";
-
+import ventasEquiposRoutes from "./routes/ventasEquiposRoutes.js";
+import ventasPlanesRoutes from "./routes/ventasPlanesRoutes.js";
 // Tu modelo User ya está importado desde los controladores o rutas.
 
 dotenv.config();
@@ -62,10 +63,10 @@ app.use("/api/productos", productosRoutes);
 app.use("/api/modalidadventa", modalidadVentaRoutes);
 app.use("/api/consultorregistrado", consultorRegistradoRoutes);
 app.use("/api/segmentoempresa", segmentoEmpresaRoutes);
-
+app.use("/api/ventas-equipos", ventasEquiposRoutes);
 // ...
 app.use("/api/oportunidades", opportunityRoutes);
-
+app.use("/api/ventas-planes", ventasPlanesRoutes);
 app.use("/api/ventas-activacion", ventasActivacionRoutes); // 👉 Servir frontend (solo en producción)
 // 👉 Servir frontend (SPA)
 const __filename = fileURLToPath(import.meta.url);

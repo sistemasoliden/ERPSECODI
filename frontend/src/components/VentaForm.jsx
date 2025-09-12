@@ -7,13 +7,119 @@ import React, {
   useCallback,
 } from "react";
 
-// ...
 import api from "../api/axios";
+
+function CustomSelect({
+  value,
+  onChange,
+  options,
+  placeholder = "— Selecciona —",
+  disabled = false,
+  getOptionValue = (o) => o.id,
+  getOptionLabel = (o) => o.label,
+  className = "",
+  buttonClassName = "",
+}) {
+  const [open, setOpen] = React.useState(false);
+  const boxRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const onDocClick = (e) => {
+      if (!boxRef.current?.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const selected =
+    options.find((o) => String(getOptionValue(o)) === String(value)) || null;
+
+  return (
+    <div
+      ref={boxRef}
+      className={`relative ${
+        disabled ? "opacity-60 pointer-events-none" : ""
+      } ${className}`}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={[
+          "h-9 w-full rounded border border-slate-300 bg-white px-3 pr-9 text-left text-xs",
+          "whitespace-nowrap truncate focus:outline-none focus:ring-1 focus:ring-slate-900/10 focus:border-slate-900",
+          buttonClassName,
+        ].join(" ")}
+      >
+        {selected ? (
+          getOptionLabel(selected)
+        ) : (
+          <span className="text-slate-400">{placeholder}</span>
+        )}
+      </button>
+
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+        ▼
+      </span>
+
+      <div
+        className={[
+          // 👇 tu mismo estilo
+          "absolute left-0 top-full z-50 mt-1 w-full border border-slate-200 bg-white shadow-lg",
+          "transform origin-top transition duration-150",
+          open
+            ? "opacity-100 scale-100 pointer-events-auto"
+            : "opacity-0 scale-95 pointer-events-none",
+        ].join(" ")}
+      >
+        <div className="max-h-56 overflow-y-auto text-xs">
+          {/* opción vacía */}
+          <div
+            // opción vacía
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onChange("");
+              setOpen(false);
+            }}
+            className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+              !value ? "bg-slate-100" : ""
+            }`}
+          >
+            — Selecciona —
+          </div>
+
+          {options.map((o) => {
+            const val = String(getOptionValue(o));
+            const label = getOptionLabel(o);
+            const active = String(value) === val;
+            return (
+              <div
+                key={val}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChange(val);
+                  setOpen(false);
+                }}
+                className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+                  active ? "bg-slate-100" : ""
+                }`}
+                title={label}
+              >
+                <span className="block w-full truncate">{label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function VentaForm({ initialData, onCreated, onSaved }) {
   const [ruc, setRuc] = useState("");
   const [razonSocial, setRazonSocial] = useState("");
-  const [error, setError] = useState("");
+  const [setError] = useState("");
   const reqIdRef = useRef(0);
 
   // catálogos
@@ -33,17 +139,13 @@ export default function VentaForm({ initialData, onCreated, onSaved }) {
 
   // NUEVOS CAMPOS
   const [q, setQ] = useState("");
-  const [cfSinIgv, setCfSinIgv] = useState(""); // input texto
-  const cfConIgv = useMemo(() => {
-    const n = parseFloat(String(cfSinIgv).replace(",", "."));
-    return Number.isFinite(n) ? (n * 1.18).toFixed(2) : "";
-  }, [cfSinIgv]);
-  // PC FINAL
-  const [pcSinIgv, setPcSinIgv] = useState(""); // input manual
-  const pcConIgv = useMemo(() => {
-    const n = parseFloat(String(pcSinIgv).replace(",", "."));
-    return Number.isFinite(n) ? (n * 1.18).toFixed(2) : "";
-  }, [pcSinIgv]);
+
+  // --- CF de doble vía ---
+  const [cfSinIgv, setCfSinIgv] = useState("");
+  const [cfConIgv, setCfConIgv] = useState("");
+
+  // PC FINAL (lo de antes)
+
   const [dniConsultor, setDniConsultor] = useState("");
   // debajo de otros useState…
   const [consultoresRegistrados, setConsultoresRegistrados] = useState([]);
@@ -68,28 +170,161 @@ export default function VentaForm({ initialData, onCreated, onSaved }) {
 
   // (opcional) SEC PROYECTO SOT
   const [secProyectoSot, setSecProyectoSot] = useState("");
-const mapToTableKeys = (b) => ({
-  ...b,
-  "ESTADO FINAL": b.estadoFinal,
-  "RAZON SOCIAL CLIENTE": b.razonSocial,
-  "CF SIN IGV": b.cfSinIgv,
-  "CF INC IGV": b.cfConIgv,
-  "PC SIN IGV": b.pcSinIgv,
-  "PC CON IGV": b.pcConIgv,
-  "CONSULTORES": b.CONSULTORES,
-  "DNI_CONSULTOR": b.DNI_CONSULTOR,
-  "SUPERVISOR": b.SUPERVISOR,
-  "CONSULTOR REGISTRADO": b.consultorRegistrado,
-  "PLAN": b.plan,
-  "DISTRITO": b.distrito,
-  "COSTO EQUIPO": b.costoEquipo,
-  "Loteo": b.Loteo,
-  "Q": b.q,
 
-  // 👇 aquí cambiamos el booleano por un texto
-  "PDV": b.pdv ? "Sí" : "",
-});
+  const [equipos, setEquipos] = useState([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const equipoBoxRef = useRef(null);
 
+  const [isOpenConsultor, setIsOpenConsultor] = useState(false);
+  const consultorBoxRef = useRef(null);
+  const [planes, setPlanes] = useState([]);
+  const [isOpenPlan, setIsOpenPlan] = useState(false);
+  const planBoxRef = useRef(null);
+  const [isOpenSupervisor, setIsOpenSupervisor] = useState(false);
+  const supervisorBoxRef = useRef(null);
+
+  // Descuentos fijos del combo
+  // Descuentos fijos del combo
+  const DESCUENTOS = [
+    0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80,
+  ];
+
+  const DESCUENTOS_PDV = [0, 50];
+
+  const descuentosDisponibles = useMemo(
+    () => (pdv ? DESCUENTOS_PDV : DESCUENTOS),
+    [pdv]
+  );
+
+  // ¿Ventas Móviles?
+  const isVentasMoviles = useMemo(() => {
+    const label = (
+      tiposVenta.find((t) => t.id === selTipoId)?.label || ""
+    ).toLowerCase();
+    return label.includes("movil") || label.includes("móvil");
+  }, [selTipoId, tiposVenta]);
+
+  // Extrae el último número del texto del plan (69.90, 289.90, etc.)
+  // (si ya tienes esta función, no la dupliques)
+  const extractPlanPrice = (name) => {
+    if (!name) return null;
+    const m = String(name).match(/([0-9]+(?:[.,][0-9]+)?)\s*$/);
+    if (!m) return null;
+    const num = parseFloat(m[1].replace(",", "."));
+    return Number.isFinite(num) ? num : null;
+  };
+
+  // Precio base del plan (CON IGV) si aplica
+  const basePlanConIgv = useMemo(() => {
+    if (!isVentasMoviles) return null;
+    const price = extractPlanPrice(plan);
+    return price ?? null;
+  }, [isVentasMoviles, plan]);
+
+  const basePlanSinIgv = useMemo(() => {
+    return basePlanConIgv != null ? basePlanConIgv / 1.18 : null;
+  }, [basePlanConIgv]);
+
+  // Base para calcular descuento (prioriza el número del Plan; si no, CF con IGV manual)
+  const baseDsctoConIgv = useMemo(() => {
+    const fromPlan = extractPlanPrice(plan);
+    if (fromPlan != null) return fromPlan;
+    const n = parseFloat(String(cfConIgv).replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }, [plan, cfConIgv]);
+
+  // Por claridad, calcula el % una sola vez
+  const pctNum = useMemo(
+    () => parseFloat(dsctoFacturacion) || 0,
+    [dsctoFacturacion]
+  );
+
+  // CF con descuento (CON IGV)
+  const cfDsctoConIgv = useMemo(() => {
+    if (baseDsctoConIgv == null) return null;
+    return baseDsctoConIgv * (1 - pctNum / 100);
+  }, [baseDsctoConIgv, pctNum]);
+
+  // CF con descuento (SIN IGV)
+  const cfDsctoSinIgv = useMemo(() => {
+    return cfDsctoConIgv != null ? cfDsctoConIgv / 1.18 : null;
+  }, [cfDsctoConIgv]);
+
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!consultorBoxRef.current?.contains(e.target))
+        setIsOpenConsultor(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  useEffect(() => {
+    if (isVentasMoviles) {
+      setDsctoFacturacion((prev) => (prev ? prev : "50"));
+    } else {
+      setDsctoFacturacion("");
+    }
+  }, [isVentasMoviles]);
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!supervisorBoxRef.current?.contains(e.target))
+        setIsOpenSupervisor(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  // Cuando hay plan válido, CF base = plan original (sin descuento)
+  useEffect(() => {
+    if (basePlanSinIgv != null) {
+      setCfSinIgv(basePlanSinIgv.toFixed(2)); // cfConIgv se actualiza con tu useMemo
+    }
+  }, [basePlanSinIgv]);
+
+  // cargar planes desde backend
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get("/ventas-planes");
+        setPlanes(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error("No pude cargar ventasplanes:", e);
+      }
+    })();
+  }, []);
+
+  // cerrar al hacer click fuera
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!planBoxRef.current?.contains(e.target)) setIsOpenPlan(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  // 👉 Si PDV está OFF, refleja el descuento elegido en CF (con y sin IGV).
+
+  const mapToTableKeys = (b) => ({
+    ...b,
+    "ESTADO FINAL": b.estadoFinal,
+    "RAZON SOCIAL CLIENTE": b.razonSocial,
+    "CF SIN IGV": b.cfSinIgv,
+    "CF INC IGV": b.cfConIgv,
+    "CF FACTURACION DSCTO SIN IGV": b.cfDescSinIgv, // 👈 nuevo
+    "CF FACTURACION DSCTO CON IGV": b.cfDescConIgv, // 👈 nuevo
+
+    CONSULTORES: b.CONSULTORES,
+    DNI_CONSULTOR: b.DNI_CONSULTOR,
+    SUPERVISOR: b.SUPERVISOR,
+    "CONSULTOR REGISTRADO": b.consultorRegistrado,
+    PLAN: b.plan,
+    DISTRITO: b.distrito,
+    "COSTO EQUIPO": b.costoEquipo,
+    Loteo: b.Loteo,
+    Q: b.q,
+    PDV: b.pdv ? "Sí" : "",
+  });
 
   // ROLES PERMITIDOS
   const ALLOWED_ROLE_IDS = [
@@ -177,14 +412,6 @@ const mapToTableKeys = (b) => ({
     buscarRuc(v);
   };
 
-  // seleccionar consultor -> set DNI y "consultor registrado"
-  const onChangeConsultor = (e) => {
-    const id = e.target.value;
-    setSelConsultorId(id);
-    const c = consultoresOptionsWithSelected.find((x) => x.id === id);
-    setDniConsultor(c?.dni || "");
-  };
-
   // cargar CONSULTOR REGISTRADO (colección separada)
   useEffect(() => {
     (async () => {
@@ -204,6 +431,17 @@ const mapToTableKeys = (b) => ({
         setSegmentos(Array.isArray(data) ? data : []);
       } catch (e) {
         console.error("No pude cargar segmentoempresa:", e);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get("/ventas-equipos");
+        setEquipos(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error("No pude cargar ventasequipos:", e);
       }
     })();
   }, []);
@@ -252,6 +490,52 @@ const mapToTableKeys = (b) => ({
       }
     })();
   }, []);
+  // Cuando cambia el plan y termina en número, CF = plan (con IGV) y sin IGV
+  useEffect(() => {
+    const price = extractPlanPrice(plan);
+    if (price != null) {
+      setCfConIgv(price.toFixed(2));
+      setCfSinIgv((price / 1.18).toFixed(2));
+    }
+  }, [plan]);
+
+  // Si enciendes PDV y no hay descuento, pon 50%. Si apagas PDV, el descuento no se aplica.
+  useEffect(() => {
+    if (pdv && !dsctoFacturacion) setDsctoFacturacion("50");
+  }, [pdv, dsctoFacturacion]);
+
+  useEffect(() => {
+    if (pdv) {
+      // Si el % actual no es 0 o 50, forzar 50
+      if (!DESCUENTOS_PDV.includes(Number(dsctoFacturacion || 0))) {
+        setDsctoFacturacion("50");
+      }
+      // Fijar CF base al precio del plan (sin descuento) si existe
+      const price = extractPlanPrice(plan);
+      if (price != null) {
+        setCfConIgv(price.toFixed(2));
+        setCfSinIgv((price / 1.18).toFixed(2));
+      }
+    }
+  }, [pdv, plan, dsctoFacturacion]);
+  useEffect(() => {
+    if (!pdv) {
+      const planPrice = extractPlanPrice(plan);
+      // Solo aplicamos esta “auto-sincronización” si hay plan con precio
+      // para evitar ciclos cuando la base es un valor manual.
+      if (planPrice != null && cfDsctoConIgv != null) {
+        const tgtCon = cfDsctoConIgv.toFixed(2);
+        const tgtSin = (cfDsctoConIgv / 1.18).toFixed(2);
+
+        if (cfConIgv !== tgtCon || cfSinIgv !== tgtSin) {
+          setCfConIgv(tgtCon);
+          setCfSinIgv(tgtSin);
+        }
+      }
+    }
+  }, [pdv, plan, cfDsctoConIgv, cfConIgv, cfSinIgv]);
+
+  // Base para calcular descuento (prioriza el número del Plan; si no, CF con IGV manual)
 
   const displayName = (u) =>
     u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim();
@@ -324,135 +608,133 @@ const mapToTableKeys = (b) => ({
     [productos, selTipoId]
   );
 
-  const onChangeEstado = (e) => {
-    const val = e.target.value;
-    setForm((p) => ({ ...p, "ESTADO FINAL": val }));
-    // siempre hoy, sin importar el estado
-    setFechaActivacion(new Date().toISOString().slice(0, 10));
+  const onChangeCfSinIgv = (e) => {
+    const v = e.target.value;
+    setCfSinIgv(v);
+    const n = parseFloat(String(v).replace(",", "."));
+    if (Number.isFinite(n)) setCfConIgv((n * 1.18).toFixed(2));
+    else setCfConIgv("");
   };
 
-  const onChangeTipo = (e) => {
-    const id = e.target.value;
-    setSelTipoId(id);
-    const tipo = tiposVenta.find((t) => t.id === id);
-    setForm((p) => ({
-      ...p,
-      TIPO_V: tipo?.label || "",
-      PRODUCTO: "",
-      TIPO_DE_VENTA: "",
-    }));
-    setSelProdId("");
-  };
-
-  const onChangeProducto = (e) => {
-    const id = e.target.value;
-    setSelProdId(id);
-    const prod = productos.find((p) => p.id === id);
-    setForm((p) => ({ ...p, PRODUCTO: prod?.label || "", TIPO_DE_VENTA: "" }));
+  const onChangeCfConIgv = (e) => {
+    const v = e.target.value;
+    setCfConIgv(v);
+    const n = parseFloat(String(v).replace(",", "."));
+    if (Number.isFinite(n)) setCfSinIgv((n / 1.18).toFixed(2));
+    else setCfSinIgv("");
   };
 
   const hoy = new Date().toISOString().slice(0, 10);
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
+  const _cfDescConIgv = cfDsctoConIgv != null ? cfDsctoConIgv.toFixed(2) : "";
+  const _cfDescSinIgv = cfDsctoSinIgv != null ? cfDsctoSinIgv.toFixed(2) : "";
 
-  const selConsultor =
-    consultoresOptionsWithSelected.find((c) => c.id === selConsultorId) || null;
-  const selSupervisor =
-    supervisoresOptionsWithSelected.find((s) => s.id === selSupervisorId) || null;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-  const base = {
-    ruc,
-    razonSocial,
-    secProyectoSot,
-    estadoFinal: form["ESTADO FINAL"],
-    tipoV: form.TIPO_V,
-    producto: form.PRODUCTO,
-    LINEAS: form.LINEAS || "",
-    CUENTA: form.CUENTA || "",
-    EQUIPO: form.EQUIPO || "",
-    SALESFORCE: form.SALESFORCE || "",
-    Loteo: form.Loteo || "",
-    q,
-    cfSinIgv,
-    cfConIgv,
-    CONSULTORES: selConsultor ? selConsultor.label : undefined,
-    DNI_CONSULTOR: selConsultor ? selConsultor.dni ?? null : undefined,
-    consultorRegistrado: consultorRegistrado || undefined,
-    SUPERVISOR: selSupervisor ? selSupervisor.label : undefined,
-    fechaActivacion: fechaActivacion || hoy,
-    distrito,
-    plan,
-    costoEquipo,
-    pdv,
-    motivoRechazo:
-      (form["ESTADO FINAL"] || "").toLowerCase() === "rechazado"
-        ? motivoRechazo
+    const selConsultor =
+      consultoresOptionsWithSelected.find((c) => c.id === selConsultorId) ||
+      null;
+    const selSupervisor =
+      supervisoresOptionsWithSelected.find((s) => s.id === selSupervisorId) ||
+      null;
+
+    const base = {
+      ruc,
+      razonSocial,
+      secProyectoSot,
+      estadoFinal: form["ESTADO FINAL"],
+      tipoV: form.TIPO_V,
+      producto: form.PRODUCTO,
+      LINEAS: form.LINEAS || "",
+      CUENTA: form.CUENTA || "",
+      EQUIPO: form.EQUIPO || "",
+      SALESFORCE: form.SALESFORCE || "",
+      Loteo: form.Loteo || "",
+      q,
+      cfSinIgv,
+      cfConIgv,
+      cfDescSinIgv: _cfDescSinIgv, // 👈 nuevo (informativo)
+      cfDescConIgv: _cfDescConIgv,
+      CONSULTORES: selConsultor ? selConsultor.label : undefined,
+      DNI_CONSULTOR: selConsultor ? selConsultor.dni ?? null : undefined,
+      consultorRegistrado: consultorRegistrado || undefined,
+      SUPERVISOR: selSupervisor ? selSupervisor.label : undefined,
+      fechaActivacion: fechaActivacion || hoy,
+      distrito,
+      plan,
+      costoEquipo,
+      pdv,
+      motivoRechazo:
+        (form["ESTADO FINAL"] || "").toLowerCase() === "rechazado"
+          ? motivoRechazo
+          : undefined,
+      dsctoFacturacion,
+      segmento: segmentoId
+        ? segmentos.find((s) => s._id === segmentoId)?.name || ""
         : undefined,
-    dsctoFacturacion,
-    segmento: segmentoId
-      ? segmentos.find((s) => s._id === segmentoId)?.name || ""
-      : undefined,
-    NOMBRE: form.NOMBRE || undefined,
-    CORREO: form.CORREO || undefined,
-    NUMERO: form.NUMERO || undefined,
-    NOMBRE2: form.NOMBRE2 || undefined,
-    CORREO4: form.CORREO4 || undefined,
-    NUMERO3: form.NUMERO3 || undefined,
-  };
+      NOMBRE: form.NOMBRE || undefined,
+      CORREO: form.CORREO || undefined,
+      NUMERO: form.NUMERO || undefined,
+      NOMBRE2: form.NOMBRE2 || undefined,
+      CORREO4: form.CORREO4 || undefined,
+      NUMERO3: form.NUMERO3 || undefined,
+    };
 
-  try {
-    if (initialData?._id) {
-      // EDITAR
-      const updatedVenta = {
-        ...initialData,
-        ...base,
-        ...mapToTableKeys(base),
-        _id: initialData._id,
-      };
+    try {
+      if (initialData?._id) {
+        // EDITAR
+        const updatedVenta = {
+          ...initialData,
+          ...base,
+          ...mapToTableKeys(base),
+          _id: initialData._id,
+        };
 
-      // 👇 forzamos los campos que la tabla necesita YA
-      if (selConsultor) {
-        updatedVenta.CONSULTORES = selConsultor.label;
-        updatedVenta.DNI_CONSULTOR = selConsultor.dni ?? "";
+        // 👇 forzamos los campos que la tabla necesita YA
+        if (selConsultor) {
+          updatedVenta.CONSULTORES = selConsultor.label;
+          updatedVenta.DNI_CONSULTOR = selConsultor.dni ?? "";
+        }
+        if (selSupervisor) {
+          updatedVenta.SUPERVISOR = selSupervisor.label;
+        }
+
+        onSaved?.(updatedVenta);
+
+        const { data } = await api.put(`/ventas/${initialData._id}`, base);
+        console.log("✅ Confirmado desde backend:", data);
+      } else {
+        // CREAR
+        const tempId = Math.random().toString(36).slice(2);
+        const tempVenta = {
+          ...base,
+          ...mapToTableKeys(base),
+          _id: tempId,
+          fechaIngreso: hoy,
+        };
+
+        if (selConsultor) {
+          tempVenta.CONSULTORES = selConsultor.label;
+          tempVenta.DNI_CONSULTOR = selConsultor.dni ?? "";
+        }
+        if (selSupervisor) {
+          tempVenta.SUPERVISOR = selSupervisor.label;
+        }
+
+        onCreated?.(tempVenta);
+
+        const { data } = await api.post("/ventas", {
+          ...base,
+          fechaIngreso: hoy,
+        });
+        console.log("✅ Confirmado desde backend:", data);
       }
-      if (selSupervisor) {
-        updatedVenta.SUPERVISOR = selSupervisor.label;
-      }
-
-      onSaved?.(updatedVenta);
-
-      const { data } = await api.put(`/ventas/${initialData._id}`, base);
-      console.log("✅ Confirmado desde backend:", data);
-    } else {
-      // CREAR
-      const tempId = Math.random().toString(36).slice(2);
-      const tempVenta = {
-        ...base,
-        ...mapToTableKeys(base),
-        _id: tempId,
-        fechaIngreso: hoy,
-      };
-
-      if (selConsultor) {
-        tempVenta.CONSULTORES = selConsultor.label;
-        tempVenta.DNI_CONSULTOR = selConsultor.dni ?? "";
-      }
-      if (selSupervisor) {
-        tempVenta.SUPERVISOR = selSupervisor.label;
-      }
-
-      onCreated?.(tempVenta);
-
-      const { data } = await api.post("/ventas", { ...base, fechaIngreso: hoy });
-      console.log("✅ Confirmado desde backend:", data);
+    } catch (err) {
+      console.error(err);
+      setError("No se pudo guardar la venta.");
     }
-  } catch (err) {
-    console.error(err);
-    setError("No se pudo guardar la venta.");
-  }
-};
-
+  };
 
   // helper para comparar strings flexibles
   const normalizeString = (s = "") =>
@@ -564,7 +846,6 @@ const mapToTableKeys = (b) => ({
     // Numéricos
     setQ(initialData.q || initialData.Q || "");
     setCfSinIgv(initialData.cfSinIgv || initialData["CF SIN IGV"] || "");
-    setPcSinIgv(initialData.pcSinIgv || initialData["PC SIN IGV"] || "");
 
     // Fechas
     setFechaActivacion(
@@ -629,16 +910,6 @@ const mapToTableKeys = (b) => ({
     <form onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-2">
       {/* Header */}
 
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        {form["ESTADO FINAL"] && (
-          <span className="inline-flex items-center gap-2 rounded px-2.5 py-1 text-xs font-medium border text-slate-700 border-slate-200 bg-slate-50">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            {form["ESTADO FINAL"]}
-          </span>
-        )}
-      </div>
-      {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
-
       {/* Datos de la Empresa */}
 
       <section className="rounded border border-slate-200 bg-white">
@@ -676,18 +947,16 @@ const mapToTableKeys = (b) => ({
             <span className="mb-1 block font-medium text-slate-700">
               Estado final
             </span>
-            <select
-              className="h-9 w-full rounded border border-slate-300 bg-white px-3 text-xs"
+            <CustomSelect
               value={form["ESTADO FINAL"]}
-              onChange={onChangeEstado}
-            >
-              <option value="">— Selecciona —</option>
-              {estadosVenta.map((e) => (
-                <option key={e.id} value={e.value}>
-                  {e.label}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => {
+                setForm((p) => ({ ...p, "ESTADO FINAL": val }));
+                setFechaActivacion(new Date().toISOString().slice(0, 10));
+              }}
+              options={estadosVenta} // [{id,label,value}]
+              getOptionValue={(o) => o.value}
+              getOptionLabel={(o) => o.label}
+            />
           </label>
 
           {/* 👇 Solo aparece si Estado final = Rechazado */}
@@ -732,18 +1001,13 @@ const mapToTableKeys = (b) => ({
             <span className="mb-1 block font-medium text-slate-700">
               Segmento
             </span>
-            <select
-              className="h-9 w-full rounded border border-slate-300 bg-white px-3 text-xs"
+            <CustomSelect
               value={segmentoId}
-              onChange={(e) => setSegmentoId(e.target.value)}
-            >
-              <option value="">— Selecciona —</option>
-              {segmentos.map((s) => (
-                <option key={s._id} value={s._id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setSegmentoId(val)}
+              options={segmentos} // [{_id, name}]
+              getOptionValue={(o) => o._id}
+              getOptionLabel={(o) => o.name}
+            />
           </label>
         </div>
       </section>
@@ -755,31 +1019,87 @@ const mapToTableKeys = (b) => ({
             <span className="mb-1 block font-medium text-slate-700">
               Consultor
             </span>
-            <select
-              className="h-9 w-full rounded border border-slate-300 bg-white px-3 text-xs"
-              value={selConsultorId}
-              onChange={onChangeConsultor}
-            >
-              <option value="">— Selecciona —</option>
-              {/* 👇 si el consultor precargado no existe en las opciones, lo mostramos igual */}
-              {selConsultorId &&
-                !consultoresOptionsWithSelected.some(
-                  (c) => c.id === selConsultorId
-                ) && (
-                  <option value={selConsultorId}>
-                    {initialData.consultores || initialData.CONSULTORES}
-                  </option>
+
+            <div ref={consultorBoxRef} className="relative">
+              {/* Botón (muestra el valor actual) */}
+              <button
+                type="button"
+                onClick={() => setIsOpenConsultor((v) => !v)}
+                className="h-9 w-full rounded border border-slate-300 bg-white px-3 pr-9
+                 text-left text-xs whitespace-nowrap truncate
+                 focus:outline-none focus:ring-1 focus:ring-slate-900/10 focus:border-slate-900
+                 transition hover:shadow-sm active:scale-[.99]"
+              >
+                {selConsultorId ? (
+                  consultoresOptionsWithSelected.find(
+                    (c) => c.id === selConsultorId
+                  )?.label ||
+                  initialData?.consultores ||
+                  initialData?.CONSULTORES
+                ) : (
+                  <span className="text-slate-400">— Selecciona —</span>
                 )}
-              {consultoresOptionsWithSelected.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
+              </button>
+
+              {/* Flecha */}
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                ▼
+              </span>
+
+              {/* Menú superpuesto con animación (no empuja layout) */}
+              <div
+                className={[
+                  "absolute left-0 top-full z-50 mt-1 w-full rounded border border-slate-200 bg-white shadow-lg",
+                  "transform origin-top transition duration-150 ease-out",
+                  isOpenConsultor
+                    ? "opacity-100 scale-100 pointer-events-auto"
+                    : "opacity-0 scale-95 pointer-events-none",
+                ].join(" ")}
+              >
+                <div className="max-h-56 overflow-y-auto text-xs">
+                  {/* opción vacía */}
+                  {/* opción vacía */}
+                  <div
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation(); // ⛔️ evita que el click llegue al botón trigger
+                      setSelConsultorId("");
+                      setDniConsultor("");
+                      setIsOpenConsultor(false);
+                    }}
+                    className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+                      !selConsultorId ? "bg-slate-100" : ""
+                    }`}
+                  >
+                    — Selecciona —
+                  </div>
+
+                  {/* opciones reales */}
+                  {consultoresOptionsWithSelected.map((c) => (
+                    <div
+                      key={c.id}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation(); // ⛔️
+                        setSelConsultorId(c.id);
+                        setDniConsultor(c.dni || "");
+                        setIsOpenConsultor(false);
+                      }}
+                      className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+                        selConsultorId === c.id ? "bg-slate-100" : ""
+                      }`}
+                      title={c.label}
+                    >
+                      {c.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </label>
 
           <label className="col-span-12 md:col-span-3 text-xs">
-            <span className="mb-1 block font-medium text-slate-700 text-c">
+            <span className="mb-1 block font-medium text-slate-700">
               DNI consultor
             </span>
             <input
@@ -789,19 +1109,21 @@ const mapToTableKeys = (b) => ({
               placeholder="—"
             />
           </label>
-
+          {/*supervisor*/}
           <label className="col-span-12 md:col-span-3 text-xs">
             <span className="mb-1 block font-medium text-slate-700">
               Supervisor comercial
             </span>
+
+            {/* ✅ Tu select original oculto: conserva toda la funcionalidad/legacy */}
             <select
-              className="h-9 w-full rounded border border-slate-300 bg-white px-3 text-xs"
+              className="sr-only absolute opacity-0 pointer-events-none"
+              aria-hidden="true"
+              tabIndex={-1}
               value={selSupervisorId}
               onChange={(e) => setSelSupervisorId(e.target.value)}
             >
               <option value="">— Selecciona —</option>
-
-              {/* 👇 si el supervisor precargado no existe en las opciones, lo mostramos igual */}
               {selSupervisorId &&
                 !supervisoresOptionsWithSelected.some(
                   (s) => s.id === selSupervisorId
@@ -810,31 +1132,123 @@ const mapToTableKeys = (b) => ({
                     {initialData.supervisor || initialData.SUPERVISOR}
                   </option>
                 )}
-
               {supervisoresOptionsWithSelected.map((op) => (
                 <option key={op.id} value={op.id}>
                   {op.label}
                 </option>
               ))}
             </select>
-          </label>
 
+            {/* ✅ Botón + menú superpuesto (mismo estilo) */}
+            <div ref={supervisorBoxRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsOpenSupervisor((v) => !v)}
+                className="h-9 w-full rounded border border-slate-300 bg-white px-3 pr-9
+                 text-left text-xs whitespace-nowrap truncate
+                 focus:outline-none focus:ring-1 focus:ring-slate-900/10 focus:border-slate-900
+                 transition hover:shadow-sm active:scale-[.99]"
+                aria-expanded={isOpenSupervisor}
+              >
+                {selSupervisorId ? (
+                  supervisoresOptionsWithSelected.find(
+                    (s) => s.id === selSupervisorId
+                  )?.label ||
+                  initialData?.supervisor ||
+                  initialData?.SUPERVISOR
+                ) : (
+                  <span className="text-slate-400">— Selecciona —</span>
+                )}
+              </button>
+
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                ▼
+              </span>
+
+              <div
+                className={[
+                  "absolute left-0 top-full z-50 mt-1 w-full border border-slate-200 bg-white shadow-lg",
+                  "transform origin-top transition duration-150",
+                  isOpenSupervisor
+                    ? "opacity-100 scale-100 pointer-events-auto"
+                    : "opacity-0 scale-95 pointer-events-none",
+                ].join(" ")}
+              >
+                {/* ⛔️ Evita que el mousedown burbujee hasta el botón */}
+                <div
+                  className="max-h-56 overflow-y-auto text-xs"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {/* Opción vacía */}
+                  <div
+                    className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+                      !selSupervisorId ? "bg-slate-100" : ""
+                    }`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelSupervisorId("");
+                      setIsOpenSupervisor(false);
+                    }}
+                  >
+                    — Selecciona —
+                  </div>
+
+                  {/* Legacy si aplica */}
+                  {selSupervisorId &&
+                    !supervisoresOptionsWithSelected.some(
+                      (s) => s.id === selSupervisorId
+                    ) &&
+                    (initialData?.supervisor || initialData?.SUPERVISOR) && (
+                      <div
+                        className="px-3 py-2 cursor-pointer hover:bg-slate-50"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSelSupervisorId(selSupervisorId);
+                          setIsOpenSupervisor(false);
+                        }}
+                        title={initialData.supervisor || initialData.SUPERVISOR}
+                      >
+                        {initialData.supervisor || initialData.SUPERVISOR}
+                      </div>
+                    )}
+
+                  {/* Opciones reales */}
+                  {supervisoresOptionsWithSelected.map((op) => (
+                    <div
+                      key={op.id}
+                      className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+                        selSupervisorId === op.id ? "bg-slate-100" : ""
+                      }`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSelSupervisorId(op.id);
+                        setIsOpenSupervisor(false); // ✅ se cierra sin parpadeo
+                      }}
+                      title={op.label}
+                    >
+                      {op.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </label>
+          {/*consultorRegistrado*/}
           <label className="col-span-12 md:col-span-3 text-xs">
             <span className="mb-1 block font-medium text-slate-700">
               Consultor registrado
             </span>
-            <select
-              className="h-9 w-full rounded border border-slate-300 bg-white px-3 text-xs"
+
+            <CustomSelect
               value={consultorRegistrado}
-              onChange={(e) => setConsultorRegistrado(e.target.value)}
-            >
-              <option value="">— Selecciona —</option>
-              {consultoresRegistrados.map((c) => (
-                <option key={c._id} value={c.nombre}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setConsultorRegistrado(val)}
+              options={consultoresRegistrados} // [{ _id, nombre }]
+              getOptionValue={(o) => o.nombre} // mantienes el estado como NOMBRE (string)
+              getOptionLabel={(o) => o.nombre}
+            />
           </label>
         </div>
       </section>
@@ -853,37 +1267,45 @@ const mapToTableKeys = (b) => ({
             <span className="mb-1 block font-medium text-slate-700">
               Tipo de venta
             </span>
-            <select
-              className="h-9 w-full rounded border border-slate-300 bg-white px-3 text-xs"
+            <CustomSelect
               value={selTipoId}
-              onChange={onChangeTipo}
-            >
-              <option value="">— Selecciona —</option>
-              {tiposVenta.map((op) => (
-                <option key={op.id} value={op.id}>
-                  {op.label}
-                </option>
-              ))}
-            </select>
+              onChange={(id) => {
+                setSelTipoId(id);
+                const tipo = tiposVenta.find((t) => t.id === id);
+                setForm((p) => ({
+                  ...p,
+                  TIPO_V: tipo?.label || "",
+                  PRODUCTO: "",
+                  TIPO_DE_VENTA: "",
+                }));
+                setSelProdId("");
+              }}
+              options={tiposVenta} // [{id,label}]
+              getOptionValue={(o) => o.id}
+              getOptionLabel={(o) => o.label}
+            />
           </label>
 
           <label className="text-xs">
             <span className="mb-1 block font-medium text-slate-700">
               Producto
             </span>
-            <select
-              className="h-9 w-full rounded border border-slate-300 bg-white px-3 text-xs disabled:bg-slate-50"
+            <CustomSelect
               value={selProdId}
-              onChange={onChangeProducto}
+              onChange={(id) => {
+                setSelProdId(id);
+                const prod = productos.find((p) => p.id === id);
+                setForm((p) => ({
+                  ...p,
+                  PRODUCTO: prod?.label || "",
+                  TIPO_DE_VENTA: "",
+                }));
+              }}
+              options={productosFiltrados} // memo: productos.filter(p => p.tipoVentaId===selTipoId)
+              getOptionValue={(o) => o.id}
+              getOptionLabel={(o) => o.label}
               disabled={!selTipoId}
-            >
-              <option value="">— Selecciona —</option>
-              {productosFiltrados.map((op) => (
-                <option key={op.id} value={op.id}>
-                  {op.label}
-                </option>
-              ))}
-            </select>
+            />
           </label>
 
           <label className="text-xs">
@@ -897,48 +1319,252 @@ const mapToTableKeys = (b) => ({
         </div>
 
         {/* Segunda fila (4 columnas iguales) */}
-        <div className="grid grid-cols-12 md:grid-cols-4 gap-4 px-5 pb-5">
+        <div className="grid grid-cols-12 md:grid-cols-2 gap-3 px-5 pb-5">
+          {/* Plan */}
           <label className="text-xs">
-            <span className="mb-1 block font-medium text-slate-700">
-              CF sin IGV
-            </span>
-            <input
-              className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
-              value={cfSinIgv}
-              onChange={(e) => setCfSinIgv(e.target.value)}
-            />
+            <span className="mb-1 block font-medium text-slate-700">Plan</span>
+            {isVentasMoviles ? (
+              <div ref={planBoxRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsOpenPlan((v) => !v)}
+                  className="h-9 w-full rounded border border-slate-300 bg-white px-3 pr-9 text-left text-xs whitespace-nowrap truncate"
+                >
+                  {plan || (
+                    <span className="text-slate-400">— Selecciona —</span>
+                  )}
+                </button>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  ▼
+                </span>
+                <div
+                  className={[
+                    "absolute left-0 top-full z-50 mt-1 w-full border border-slate-200 bg-white shadow-lg",
+                    "transform origin-top transition duration-150",
+                    isOpenPlan
+                      ? "opacity-100 scale-100 pointer-events-auto"
+                      : "opacity-0 scale-95 pointer-events-none",
+                  ].join(" ")}
+                >
+                  <div className="max-h-56 overflow-y-auto text-xs">
+                    <div
+                      className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+                        !plan ? "bg-slate-100" : ""
+                      }`}
+                      onClick={() => {
+                        setPlan("");
+                        setIsOpenPlan(false);
+                      }}
+                    >
+                      <span className="block w-full truncate">
+                        — Selecciona —
+                      </span>
+                    </div>
+                    {planes.map((p) => (
+                      <div
+                        key={p._id}
+                        className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+                          plan === p.name ? "bg-slate-100" : ""
+                        }`}
+                        onClick={() => {
+                          setPlan(p.name);
+                          setIsOpenPlan(false);
+                        }}
+                        title={p.name}
+                      >
+                        <span className="block w-full truncate">{p.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <input
+                className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
+                value={plan}
+                onChange={(e) => setPlan(e.target.value)}
+                placeholder="Escribe el plan"
+              />
+            )}
           </label>
 
+          {/* Descuento + PDV en dos columnas iguales */}
+          <div className="grid grid-cols-12 gap-3">
+            <label className="col-span-12 md:col-span-6 text-xs">
+              <span className="mb-1 block font-medium text-slate-700">
+                Descuento facturación
+              </span>
+              <select
+                className="h-9 w-full rounded border border-slate-300 bg-white px-3 text-xs"
+                value={dsctoFacturacion}
+                onChange={(e) => setDsctoFacturacion(e.target.value)}
+              >
+                {descuentosDisponibles.map((pct) => (
+                  <option key={pct} value={pct}>
+                    {pct} %
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="col-span-12 md:col-span-6 text-xs">
+              <span className="mb-1 block font-medium text-slate-700">PDV</span>
+              <label className="h-9 w-full rounded border border-slate-300 px-3 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={pdv}
+                  onChange={(e) => setPdv(e.target.checked)}
+                />
+                <span className="text-slate-700">Activar</span>
+              </label>
+            </div>
+          </div>
+
+          {/* CF (base) – editable y de doble vía */}
+          {/* CF con IGV */}
           <label className="text-xs">
             <span className="mb-1 block font-medium text-slate-700">
               CF con IGV
             </span>
             <input
-              className="h-9 w-full rounded border border-slate-200 bg-slate-50 px-3 text-xs"
+              className={`h-9 w-full rounded border px-3 text-xs ${
+                pdv && extractPlanPrice(plan) != null
+                  ? "border-slate-200 bg-slate-50"
+                  : "border-slate-300"
+              }`}
               value={cfConIgv}
-              readOnly
+              onChange={onChangeCfConIgv}
+              readOnly={pdv && extractPlanPrice(plan) != null}
+              placeholder="0.00"
             />
           </label>
 
+          {/* CF sin IGV */}
           <label className="text-xs">
             <span className="mb-1 block font-medium text-slate-700">
-              PC sin IGV
+              CF sin IGV
+            </span>
+
+            <input
+              className={`h-9 w-full rounded border px-3 text-xs ${
+                pdv && extractPlanPrice(plan) != null
+                  ? "border-slate-200 bg-slate-50"
+                  : "border-slate-300"
+              }`}
+              value={cfSinIgv}
+              onChange={onChangeCfSinIgv}
+              readOnly={pdv && extractPlanPrice(plan) != null}
+              placeholder="0.00"
+            />
+          </label>
+
+          {/* CF facturación con descuento (solo si PDV = ON) */}
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-slate-700">
+              CF facturación con descuento (con IGV)
+            </span>
+            <input
+              className="h-9 w-full rounded border border-slate-200 bg-slate-50 px-3 text-xs"
+              value={cfDsctoConIgv != null ? cfDsctoConIgv.toFixed(2) : ""}
+              readOnly
+              placeholder="—"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-slate-700">
+              CF facturación con descuento (sin IGV)
+            </span>
+            <input
+              className="h-9 w-full rounded border border-slate-200 bg-slate-50 px-3 text-xs"
+              value={cfDsctoSinIgv != null ? cfDsctoSinIgv.toFixed(2) : ""}
+              readOnly
+              placeholder="—"
+            />
+          </label>
+        </div>
+        {/* Contenedor en 3 columnas iguales */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 px-5 pb-5">
+          {/* Equipo */}
+          <label className="text-xs w-full">
+            <span className="mb-1 block font-medium text-slate-700">
+              Equipo
+            </span>
+
+            <div ref={equipoBoxRef} className="relative">
+              <CustomSelect
+                value={form.EQUIPO}
+                onChange={(val) => setForm((p) => ({ ...p, EQUIPO: val }))}
+                options={equipos} // [{_id, name}]
+                getOptionValue={(o) => o.name}
+                getOptionLabel={(o) => o.name}
+              />
+
+              {/* Flechita */}
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                ▼
+              </span>
+
+              {/* Menú superpuesto */}
+              {isOpen && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-full border border-slate-200 bg-white shadow-lg">
+                  <div className="max-h-56 overflow-y-auto text-xs">
+                    <div
+                      className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+                        form.EQUIPO === "" ? "bg-slate-100" : ""
+                      }`}
+                      onClick={() => {
+                        setForm((p) => ({ ...p, EQUIPO: "" }));
+                        setIsOpen(false);
+                      }}
+                    >
+                      — Selecciona —
+                    </div>
+
+                    {equipos.map((eq) => (
+                      <div
+                        key={eq._id}
+                        className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${
+                          form.EQUIPO === eq.name ? "bg-slate-100" : ""
+                        }`}
+                        onClick={() => {
+                          setForm((p) => ({ ...p, EQUIPO: eq.name }));
+                          setIsOpen(false);
+                        }}
+                        title={eq.name}
+                      >
+                        {eq.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </label>
+
+          {/* Costo Equipo */}
+          <label className="text-xs w-full">
+            <span className="mb-1 block font-medium text-slate-700">
+              Costo Equipo
             </span>
             <input
               className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
-              value={pcSinIgv}
-              onChange={(e) => setPcSinIgv(e.target.value)}
+              value={costoEquipo}
+              onChange={(e) => setCostoEquipo(e.target.value)}
             />
           </label>
 
-          <label className="text-xs">
+          {/* Líneas */}
+          <label className="text-xs w-full">
             <span className="mb-1 block font-medium text-slate-700">
-              PC con IGV
+              Líneas
             </span>
             <input
-              className="h-9 w-full rounded border border-slate-200 bg-slate-50 px-3 text-xs"
-              value={pcConIgv}
-              readOnly
+              className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
+              value={form.LINEAS}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, LINEAS: e.target.value }))
+              }
             />
           </label>
         </div>
@@ -953,7 +1579,7 @@ const mapToTableKeys = (b) => ({
         </div>
 
         {/* Primera fila → 4 columnas */}
-        <div className="grid grid-cols-12 md:grid-cols-4 gap-4 p-5">
+        <div className="grid grid-cols-12 md:grid-cols-3 gap-4 p-5">
           <label className="text-xs">
             <span className="mb-1 block font-medium text-slate-700">
               SEC PROYECTO SOT
@@ -962,19 +1588,6 @@ const mapToTableKeys = (b) => ({
               className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
               value={secProyectoSot}
               onChange={(e) => setSecProyectoSot(e.target.value)}
-            />
-          </label>
-
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-slate-700">
-              Líneas
-            </span>
-            <input
-              className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
-              value={form.LINEAS}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, LINEAS: e.target.value }))
-              }
             />
           </label>
 
@@ -990,23 +1603,20 @@ const mapToTableKeys = (b) => ({
               }
             />
           </label>
-
           <label className="text-xs">
-            <span className="mb-1 block font-medium text-slate-700">
-              Equipo
-            </span>
+            <span className="mb-1 block font-medium text-slate-700">Loteo</span>
             <input
               className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
-              value={form.EQUIPO}
+              value={form.Loteo}
               onChange={(e) =>
-                setForm((p) => ({ ...p, EQUIPO: e.target.value }))
+                setForm((p) => ({ ...p, Loteo: e.target.value }))
               }
             />
           </label>
         </div>
 
         {/* Segunda fila → 4 columnas */}
-        <div className="grid grid-cols-12 md:grid-cols-4 gap-4 px-5 pb-5">
+        <div className="grid grid-cols-12 md:grid-cols-2 gap-4 px-5 pb-5">
           <label className="text-xs">
             <span className="mb-1 block font-medium text-slate-700">
               Salesforce
@@ -1022,67 +1632,12 @@ const mapToTableKeys = (b) => ({
 
           <label className="text-xs">
             <span className="mb-1 block font-medium text-slate-700">
-              Descuento facturación
-            </span>
-            <input
-              className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
-              value={dsctoFacturacion}
-              onChange={(e) => setDsctoFacturacion(e.target.value)}
-            />
-          </label>
-          <div className="flex items-center gap-2 text-xs mt-4">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 ml-12 "
-              checked={pdv}
-              onChange={(e) => setPdv(e.target.checked)}
-            />
-
-            <span className="text-center font-medium text-slate-700">PDV</span>
-          </div>
-        </div>
-
-        {/* Segunda fila → 4 columnas */}
-        {/* Segunda fila → 4 columnas */}
-        <div className="grid grid-cols-12 md:grid-cols-4 gap-4 px-5 pb-5">
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-slate-700">
               Distrito
             </span>
             <input
               className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
               value={distrito}
               onChange={(e) => setDistrito(e.target.value)}
-            />
-          </label>
-
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-slate-700">Plan</span>
-            <input
-              className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
-              value={plan}
-              onChange={(e) => setPlan(e.target.value)}
-            />
-          </label>
-
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-slate-700">
-              Costo Equipo
-            </span>
-            <input
-              className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
-              value={costoEquipo}
-              onChange={(e) => setCostoEquipo(e.target.value)}
-            />
-          </label>
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-slate-700">Loteo</span>
-            <input
-              className="h-9 w-full rounded border border-slate-300 px-3 text-xs"
-              value={form.Loteo}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, Loteo: e.target.value }))
-              }
             />
           </label>
         </div>

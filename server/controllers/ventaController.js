@@ -139,6 +139,7 @@ const normalizeName = (s = "") =>
 
 
 /* ─────────────────────────── CREATE ─────────────────────────── */
+// ✅ CREATE — acoplado a los campos del formulario (incluye CF FACTURACION DSCTO ...)
 export async function createVenta(req, res) {
   try {
     const b = req.body || {};
@@ -165,6 +166,7 @@ export async function createVenta(req, res) {
     const estadoFinal = (pick("estadoFinal", "ESTADO FINAL") || "").trim();
     let fechaActivacion = pick("FECHA_ACTIVACION", "fechaActivacion");
     if (!fechaActivacion) {
+      // ⚠️ Mantengo tu comportamiento: si no viene, setea según estado
       fechaActivacion = estadoFinal.toLowerCase() === "aprobado" ? hoy : "";
     }
 
@@ -176,10 +178,23 @@ export async function createVenta(req, res) {
     if (cfIncIgv === null && cfSinIgv !== null)
       cfIncIgv = +(cfSinIgv * 1.18).toFixed(2);
 
-    let pcSinIgv = toFloat(pick("PC SIN IGV", "pcSinIgv"));
-    let pcConIgv = toFloat(pick("PC CON IGV", "pcConIgv"));
-    if (pcSinIgv === null) pcSinIgv = cfSinIgv ?? null;
-    if (pcConIgv === null) pcConIgv = cfIncIgv ?? null;
+    // ✅ NUEVO: CF facturación con descuento (ambos)
+    const cfDescSinIgv = toFloat(
+      pick(
+        "CF FACTURACION DSCTO SIN IGV",
+        "cfDescSinIgv",
+        "cf_facturacion_dscto_sin_igv",
+        "cf_desc_sin_igv"
+      )
+    );
+    const cfDescConIgv = toFloat(
+      pick(
+        "CF FACTURACION DSCTO CON IGV",
+        "cfDescConIgv",
+        "cf_facturacion_dscto_con_igv",
+        "cf_desc_con_igv"
+      )
+    );
 
     const consultorNombre =
       pick("CONSULTORES", "consultor", "consultorNombre") || "";
@@ -257,6 +272,10 @@ export async function createVenta(req, res) {
       "CF SIN IGV": cfSinIgv,
       "CF INC IGV": cfIncIgv,
 
+      // ✅ NUEVO: se guardan tal cual llegan (numéricos)
+      "CF FACTURACION DSCTO SIN IGV": cfDescSinIgv,
+      "CF FACTURACION DSCTO CON IGV": cfDescConIgv,
+
       DISTRITO: distrito,
       PLAN: plan,
       "COSTO EQUIPO": costoEquipo,
@@ -264,9 +283,6 @@ export async function createVenta(req, res) {
       "MOTIVO RECHAZO": motivoRechazo,
       SEGMENTO: segmento,
       "DSCTO FACTURACION": dsctoFact,
-
-      "PC SIN IGV": pcSinIgv,
-      "PC CON IGV": pcConIgv,
 
       NOMBRE: pick("NOMBRE") || "",
       CORREO: pick("CORREO") || "",
@@ -285,8 +301,6 @@ export async function createVenta(req, res) {
 }
 
 /* ─────────────────────────── LIST (find) ─────────────────────────── */
-// backend/controllers/ventaController.js
-// backend/controllers/ventaController.js
 export async function listVentas(req, res) {
   try {
     const page = parseInt(req.query.page, 10) || 1;
@@ -319,17 +333,14 @@ export async function listVentas(req, res) {
 
     if (ys.length) {
       if (ms.length === 0) {
-        // Solo años
         query.FECHA_ACTIVACION = {
           $regex: new RegExp(`^(${ys.map(escRe).join("|")})`),
         };
       } else if (ys.length === 1) {
-        // Año + meses
         query.FECHA_ACTIVACION = {
           $regex: new RegExp(`^${escRe(ys[0])}-(?:${ms.map(escRe).join("|")})`),
         };
       } else {
-        // Varios años (con o sin meses)
         query.$or = ys.map((y) => ({
           FECHA_ACTIVACION: {
             $regex: ms.length
@@ -339,25 +350,19 @@ export async function listVentas(req, res) {
         }));
       }
     } else if (ms.length) {
-      // Solo meses (cualquier año)
       query.FECHA_ACTIVACION = {
         $regex: new RegExp(`^\\d{4}-(?:${ms.map(escRe).join("|")})`),
       };
     }
 
-    // 🔎 Búsqueda global
-    // 🔎 Búsqueda global
-    // 🔎 Búsqueda global
+    // 🔎 Búsqueda global (se mantiene)
     if (req.query.search) {
       const search = req.query.search.trim();
-      const regex = new RegExp(escRe(search), "i"); // insensitive
-
-      // si es numérico, lo guardamos
+      const regex = new RegExp(escRe(search), "i");
       const maybeNumber = Number(search);
       const isNumeric = !isNaN(maybeNumber);
 
       query.$or = [
-        // Strings
         { "RAZON SOCIAL CLIENTE": regex },
         { PRODUCTO: regex },
         { "ESTADO FINAL": regex },
@@ -373,12 +378,10 @@ export async function listVentas(req, res) {
         { NUMERO3: regex },
         { CORREO4: regex },
 
-        // Números convertidos a string (por si acaso Mongo los guarda como texto en algún doc)
         { RUC: regex },
         { LINEAS: regex },
         { Q: regex },
 
-        // Si es número, también buscamos coincidencia exacta
         ...(isNumeric
           ? [{ RUC: maybeNumber }, { LINEAS: maybeNumber }, { Q: maybeNumber }]
           : []),
@@ -391,8 +394,8 @@ export async function listVentas(req, res) {
     /* ---------- Pipeline ---------- */
     const pipeline = [
       { $match: query },
-      addFaStage, // ⬅️ convierte FECHA_ACTIVACION a Date en campo "fa"
-      { $sort: { fa: -1, _id: -1 } }, // ⬅️ orden estable
+      addFaStage, // convierte FECHA_ACTIVACION en Date (campo "fa")
+      { $sort: { fa: -1, _id: -1 } },
       { $skip: skip },
       { $limit: limit },
       { $project: { __v: 0 } },
@@ -403,7 +406,7 @@ export async function listVentas(req, res) {
     /* ---------- Normalización ---------- */
     const normalized = data.map((v) => ({
       // básicos
-      _id: v._id, // asegúrate de mantener el ID original de Mongo
+      _id: v._id,
       fechaIngreso: v["FECHA_INGRESO"],
       fechaActivacion: v["FECHA_ACTIVACION"],
       ruc: v["RUC"],
@@ -432,9 +435,9 @@ export async function listVentas(req, res) {
       q: v["Q"],
       cfSinIgv: v["CF SIN IGV"],
       cfConIgv: v["CF INC IGV"],
-      pcSinIgv: v["PC SIN IGV"],
-      pcConIgv: v["PC CON IGV"],
-
+      // ✅ NUEVOS en la respuesta:
+      cfDescSinIgv: v["CF FACTURACION DSCTO SIN IGV"],
+      cfDescConIgv: v["CF FACTURACION DSCTO CON IGV"],
       // detalle
       distrito: v["DISTRITO"],
       plan: v["PLAN"],
@@ -864,32 +867,28 @@ export async function updateVenta(req, res) {
       return Number.isFinite(n) ? n : undefined;
     };
 
-    // Construimos $set solo con lo que realmente viene en el body
+    // $set solo con lo que realmente llega
     const $set = {};
 
     // Básicos (NO tocamos FECHA_INGRESO aquí)
     if (pick("razonSocial", "RAZON SOCIAL CLIENTE") !== undefined)
-      $set["RAZON SOCIAL CLIENTE"] = pick(
-        "razonSocial",
-        "RAZON SOCIAL CLIENTE"
-      );
+      $set["RAZON SOCIAL CLIENTE"] = pick("razonSocial", "RAZON SOCIAL CLIENTE");
 
-    if (pick("ruc", "RUC") !== undefined) $set["RUC"] = pick("ruc", "RUC");
+    if (pick("ruc", "RUC") !== undefined)
+      $set["RUC"] = pick("ruc", "RUC");
 
     if (pick("secProyectoSot", "SEC_PROYECTO_SOT") !== undefined)
-      $set["SEC_PROYECTO_SOT"] = pick("secProyectoSot", "SEC_PROYECTO_SOT");
+      $set["SEC PROYECTO SOT"] = pick("secProyectoSot", "SEC_PROYECTO_SOT");
 
     // Catálogos
     if (pick("tipoV", "TIPO_V") !== undefined)
       $set["TIPO_V"] = pick("tipoV", "TIPO_V");
+
     if (pick("producto", "PRODUCTO") !== undefined)
       $set["PRODUCTO"] = pick("producto", "PRODUCTO");
+
     if (pick("tipoDeVenta", "TIPO_DE_VENTA", "TIPO DE VENTA") !== undefined)
-      $set["TIPO DE VENTA"] = pick(
-        "tipoDeVenta",
-        "TIPO_DE_VENTA",
-        "TIPO DE VENTA"
-      );
+      $set["TIPO DE VENTA"] = pick("tipoDeVenta", "TIPO_DE_VENTA", "TIPO DE VENTA");
 
     // Estado + fecha activación
     if (pick("estadoFinal", "ESTADO FINAL") !== undefined)
@@ -910,22 +909,12 @@ export async function updateVenta(req, res) {
     if (pick("LINEAS") !== undefined) $set["LINEAS"] = pick("LINEAS");
     if (pick("CUENTA") !== undefined) $set["CUENTA"] = pick("CUENTA");
     if (pick("EQUIPO") !== undefined) $set["EQUIPO"] = pick("EQUIPO");
-    if (pick("SALESFORCE") !== undefined)
-      $set["SALESFORCE"] = pick("SALESFORCE");
-    if (pick("Loteo", "loteo") !== undefined)
-      $set["Loteo"] = pick("Loteo", "loteo");
+    if (pick("SALESFORCE") !== undefined) $set["SALESFORCE"] = pick("SALESFORCE");
+    if (pick("Loteo", "loteo") !== undefined) $set["Loteo"] = pick("Loteo", "loteo");
 
     // Personas
-    if (
-      pick("CONSULTORES", "consultores", "consultor", "consultorNombre") !==
-      undefined
-    )
-      $set["CONSULTORES"] = pick(
-        "CONSULTORES",
-        "consultores",
-        "consultor",
-        "consultorNombre"
-      );
+    if (pick("CONSULTORES", "consultores", "consultor", "consultorNombre") !== undefined)
+      $set["CONSULTORES"] = pick("CONSULTORES", "consultores", "consultor", "consultorNombre");
 
     if (pick("DNI_CONSULTOR", "dniConsultor") !== undefined)
       $set["DNI_CONSULTOR"] = pick("DNI_CONSULTOR", "dniConsultor");
@@ -934,42 +923,53 @@ export async function updateVenta(req, res) {
       $set["SUPERVISOR"] = pick("SUPERVISOR", "supervisor");
 
     if (pick("consultorRegistrado", "CONSULTOR REGISTRADO") !== undefined)
-      $set["CONSULTOR REGISTRADO"] = pick(
-        "consultorRegistrado",
-        "CONSULTOR REGISTRADO"
-      );
+      $set["CONSULTOR REGISTRADO"] = pick("consultorRegistrado", "CONSULTOR REGISTRADO");
 
-    // Números
+    // Números base
     const q = toInt(pick("q", "Q"));
     if (q !== undefined) $set["Q"] = q;
 
     const cfSin = toFloat(pick("cfSinIgv", "CF SIN IGV", "cf_sin_igv"));
     if (cfSin !== undefined) $set["CF SIN IGV"] = cfSin;
 
-    let cfCon = toFloat(
-      pick("cfConIgv", "CF INC IGV", "CF CON IGV", "cf_inc_igv")
-    );
+    let cfCon = toFloat(pick("cfConIgv", "CF INC IGV", "CF CON IGV", "cf_inc_igv"));
     if (cfCon === undefined && cfSin !== undefined)
       cfCon = +(cfSin * 1.18).toFixed(2);
     if (cfCon !== undefined) $set["CF INC IGV"] = cfCon;
 
-    const pcSin = toFloat(pick("pcSinIgv", "PC SIN IGV"));
-    if (pcSin !== undefined) $set["PC SIN IGV"] = pcSin;
+    
+    // ✅ NUEVOS: CF facturación con descuento (numéricos, opcionales)
+    const cfDescSin = toFloat(
+      pick(
+        "cfDescSinIgv",
+        "CF FACTURACION DSCTO SIN IGV",
+        "cf_facturacion_dscto_sin_igv",
+        "cf_desc_sin_igv"
+      )
+    );
+    if (cfDescSin !== undefined) $set["CF FACTURACION DSCTO SIN IGV"] = cfDescSin;
 
-    let pcCon = toFloat(pick("pcConIgv", "PC CON IGV"));
-    if (pcCon === undefined && pcSin !== undefined)
-      pcCon = +(pcSin * 1.18).toFixed(2);
-    if (pcCon !== undefined) $set["PC CON IGV"] = pcCon;
+    const cfDescCon = toFloat(
+      pick(
+        "cfDescConIgv",
+        "CF FACTURACION DSCTO CON IGV",
+        "cf_facturacion_dscto_con_igv",
+        "cf_desc_con_igv"
+      )
+    );
+    if (cfDescCon !== undefined) $set["CF FACTURACION DSCTO CON IGV"] = cfDescCon;
 
     // Detalle
     if (pick("distrito", "DISTRITO") !== undefined)
       $set["DISTRITO"] = pick("distrito", "DISTRITO");
-    if (pick("plan", "PLAN") !== undefined) $set["PLAN"] = pick("plan", "PLAN");
+
+    if (pick("plan", "PLAN") !== undefined)
+      $set["PLAN"] = pick("plan", "PLAN");
 
     const costo = toFloat(pick("costoEquipo", "COSTO EQUIPO", "COSTO_EQUIPO"));
     if (costo !== undefined) $set["COSTO EQUIPO"] = costo;
 
-    // PDV normalizado: "Sí" o "" (como ya haces en create)
+    // PDV normalizado: "Sí" o "" (igual que en create)
     if (pick("pdv", "PDV") !== undefined) {
       const pdvRaw = pick("pdv", "PDV");
       const v = String(pdvRaw).trim().toLowerCase();
@@ -983,8 +983,7 @@ export async function updateVenta(req, res) {
 
     // Motivo rechazo (solo si estado es Rechazado)
     if (pick("motivoRechazo", "MOTIVO RECHAZO") !== undefined) {
-      const estado =
-        $set["ESTADO FINAL"] ?? pick("estadoFinal", "ESTADO FINAL");
+      const estado = $set["ESTADO FINAL"] ?? pick("estadoFinal", "ESTADO FINAL");
       if (estado && String(estado).toLowerCase() === "rechazado") {
         $set["MOTIVO RECHAZO"] = pick("motivoRechazo", "MOTIVO RECHAZO");
       } else {
@@ -995,19 +994,29 @@ export async function updateVenta(req, res) {
     if (pick("dsctoFacturacion", "DSCTO FACTURACION") !== undefined)
       $set["DSCTO FACTURACION"] = pick("dsctoFacturacion", "DSCTO FACTURACION");
 
-    // Segmento (por nombre)
+    // Segmento por nombre (si viene)
     if (pick("segmento", "SEGMENTO") !== undefined)
       $set["SEGMENTO"] = pick("segmento", "SEGMENTO");
 
-    // Contactos
-    ["NOMBRE", "CORREO", "NUMERO", "NOMBRE2", "CORREO4", "NUMERO3"].forEach(
-      (k) => {
-        if (pick(k, k.toLowerCase()) !== undefined)
-          $set[k] = pick(k, k.toLowerCase());
+    // ✅ Segmento por ID (si NO vino nombre, pero sí ID)
+    if ($set["SEGMENTO"] === undefined) {
+      const segmentoId = pick("segmentoId", "SEGMENTO_ID");
+      if (segmentoId !== undefined && segmentoId) {
+        try {
+          const { default: SegmentoEmpresa } = await import("../models/SegmentoEmpresa.js");
+          const seg = await SegmentoEmpresa.findById(segmentoId).lean();
+          if (seg?.name) $set["SEGMENTO"] = seg.name;
+        } catch {}
       }
-    );
+    }
 
-    // Si no hay nada que actualizar:
+    // Contactos
+    ["NOMBRE", "CORREO", "NUMERO", "NOMBRE2", "CORREO4", "NUMERO3"].forEach((k) => {
+      if (pick(k, k.toLowerCase()) !== undefined)
+        $set[k] = pick(k, k.toLowerCase());
+    });
+
+    // Nada que actualizar
     if (!Object.keys($set).length)
       return res.json({ updated: 0, message: "Sin cambios" });
 
@@ -1024,6 +1033,7 @@ export async function updateVenta(req, res) {
     return res.status(500).json({ error: "Error al actualizar venta" });
   }
 }
+
 
 export async function deleteVenta(req, res) {
   try {
@@ -1042,30 +1052,94 @@ export async function deleteVenta(req, res) {
   }
 }
 
+
 export async function duplicateVentas(req, res) {
   try {
-    // POST /ventas/duplicate  body: { ids: ["...","..."] }
-    const ids = asArr(req.body?.ids);
-    if (!ids.length) return res.status(400).json({ error: "IDs requeridos" });
+    // Body esperado:
+    // { ids: string[]; times?: number; timesPerId?: Record<id, number>; overrides?: object }
+    const ids = asArr(req.body?.ids).map(String).filter(Boolean);
+    if (!ids.length) {
+      return res.status(400).json({ error: "IDs requeridos" });
+    }
 
+    const MAX_TIMES = 50;      // límite sano por ID
+    const MAX_TOTAL = 1000;    // límite total por llamada (anti-accidente)
+
+    // Soporta (a) un times global o (b) un mapa timesPerId
+    const timesGlobal = Number.isFinite(+req.body?.times) ? Math.max(1, Math.min(+req.body.times, MAX_TIMES)) : 1;
+    const timesPerId = req.body?.timesPerId && typeof req.body.timesPerId === "object" ? req.body.timesPerId : null;
+
+    // Calcula cuántas copias por ID (con clamp)
+    const perIdTimes = new Map(
+      ids.map((id) => {
+        const nRaw = timesPerId ? +timesPerId[id] : timesGlobal;
+        const n = Number.isFinite(nRaw) ? Math.max(1, Math.min(nRaw, MAX_TIMES)) : 1;
+        return [id, n];
+      })
+    );
+
+    // Chequeo de total
+    const totalTarget = Array.from(perIdTimes.values()).reduce((a, b) => a + b, 0);
+    if (totalTarget > MAX_TOTAL) {
+      return res
+        .status(400)
+        .json({ error: `Demasiadas copias a crear (${totalTarget}). Máximo permitido: ${MAX_TOTAL}.` });
+    }
+
+    // Trae originales
     const originals = await Venta.find({ _id: { $in: ids } }).lean();
 
-    if (!originals.length) return res.json({ duplicated: 0, items: [] });
+    if (!originals.length) {
+      return res.status(200).json({ duplicated: 0, items: [], missingIds: ids, perId: {} });
+    }
 
+    const mapOriginal = new Map(originals.map((o) => [String(o._id), o]));
+    const missingIds = ids.filter((id) => !mapOriginal.has(id));
+
+    // Fecha ingreso para las copias (hoy) — puedes exponer un override si quieres
     const hoy = new Date().toISOString().slice(0, 10);
-    const docs = originals.map((o) => {
-      const { _id, __v, createdAt, updatedAt, ...rest } = o;
-      // Ajustes: nueva FECHA_INGRESO; FECHA_ACTIVACION se mantiene
-      return {
-        ...rest,
-        FECHA_INGRESO: hoy,
-      };
-    });
 
-    const inserted = await Venta.insertMany(docs);
-    return res
-      .status(201)
-      .json({ duplicated: inserted.length, items: inserted });
+    // Overrides (opcional): si mandas un objeto, lo mergeamos superficialmente.
+    // ⚠️ Si quieres “whitelist” de campos permitidos, agrega una lista y filtra aquí.
+    const overrides = (req.body?.overrides && typeof req.body.overrides === "object") ? req.body.overrides : null;
+
+    const docs = [];
+    const perIdInserted = Object.fromEntries(ids.map((id) => [id, 0]));
+
+    for (const id of ids) {
+      const base = mapOriginal.get(id);
+      if (!base) continue;
+
+      // Quitamos campos no copiables
+      const { _id, __v, createdAt, updatedAt, ...rest } = base;
+
+      const times = perIdTimes.get(id) ?? 1;
+      for (let i = 0; i < times; i++) {
+        const clone = {
+          ...rest,
+          // Ajustes:
+          FECHA_INGRESO: hoy,   // nueva fecha de ingreso
+          // FECHA_ACTIVACION: (conservar lo que tenía el original)
+        };
+        if (overrides) Object.assign(clone, overrides);
+        docs.push(clone);
+        perIdInserted[id] += 1;
+      }
+    }
+
+    if (docs.length === 0) {
+      return res.status(200).json({ duplicated: 0, items: [], missingIds, perId: perIdInserted });
+    }
+
+    // Inserta en bloque
+    const inserted = await Venta.insertMany(docs, { ordered: false });
+
+    return res.status(201).json({
+      duplicated: inserted.length,
+      items: inserted,
+      missingIds,
+      perId: perIdInserted,
+    });
   } catch (err) {
     console.error("❌ Error en duplicateVentas:", err);
     return res.status(500).json({ error: "Error al duplicar ventas" });

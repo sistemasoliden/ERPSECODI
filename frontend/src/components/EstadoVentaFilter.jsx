@@ -17,13 +17,6 @@ const MONTH_NAMES = [
   "Diciembre",
 ];
 
-/* ──────────────────────────────────────────────────────────
-   MultiSelect (compacto + elegante + dark mode)
-   - Label arriba (consistente)
-   - Búsqueda con header sticky
-   - Seleccionar todo / Limpiar
-   - Cierra con click afuera y tecla Esc
-────────────────────────────────────────────────────────── */
 function MultiSelect({
   label,
   options = [],
@@ -101,7 +94,7 @@ function MultiSelect({
         onClick={() => setOpen((o) => !o)}
         className={[
           (className =
-            "h-8 w-auto min-w-[120px] max-w-[160px] rounded-md border  text-[11px]"),
+            "h-10 w-auto min-w-[140px] max-w-[160px] rounded-md border  text-[11px]"),
           "bg-white text-black border-slate-300",
           "hover:border-slate-400",
           "shadow-sm transition",
@@ -128,7 +121,7 @@ function MultiSelect({
       {open && (
         <div
           className={[
-            "absolute z-20 mt-1 min-w-[120px] max-w-[120px] overflow-hidden border shadow-lg", // 👈 ancho fijo
+            "absolute z-20 mt-1 min-w-[140px] max-w-[140px] overflow-hidden border shadow-lg", // 👈 ancho fijo
             "bg-white border-slate-200",
             "dark:bg-slate-900 dark:border-slate-700",
           ].join(" ")}
@@ -143,7 +136,7 @@ function MultiSelect({
             ].join(" ")}
           >
             <button
-              className="flex-1 rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[10px] 
+              className="flex-1 rounded-md border border-slate-300 bg-slate-50 px-2 py-2 text-[10px] 
                    font-medium hover:bg-slate-100 transition
                    dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
               onClick={handleSelectAll}
@@ -151,7 +144,7 @@ function MultiSelect({
               Todo
             </button>
             <button
-              className="flex-1 rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[10px] 
+              className="flex-1 rounded-md border border-slate-300 bg-slate-50 px-2 py-2 text-[10px] 
                    font-medium hover:bg-slate-100 transition
                    dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
               onClick={handleClear}
@@ -272,18 +265,18 @@ export default function EstadoVentaFilter({
   const yearsSel = Array.isArray(yearValue)
     ? yearValue
     : Array.isArray(yearLocal)
-    ? yearLocal
-    : [];
+      ? yearLocal
+      : [];
   const monthsSel = Array.isArray(monthValue)
     ? monthValue
     : monthValue
-    ? [monthValue]
-    : [];
+      ? [monthValue]
+      : [];
   const tiposSel = Array.isArray(tipoVentaValue)
     ? tipoVentaValue
     : tipoVentaValue
-    ? [tipoVentaValue]
-    : [];
+      ? [tipoVentaValue]
+      : [];
 
   useEffect(() => {
     (async () => {
@@ -331,7 +324,7 @@ export default function EstadoVentaFilter({
   return (
     <div
       className={[
-        "flex flex-wrap items-center gap-x-2 gap-y-2 px-3 py-3", // 👈 más compacto (py-3)
+        "flex flex-wrap items-center gap-x-8 gap-y-2 px-3 py-3", // 👈 más compacto (py-3)
         className || "",
       ].join(" ")}
     >
@@ -424,10 +417,10 @@ export default function EstadoVentaFilter({
         <button
           type="button"
           onClick={() => onClear()}
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md 
-                   bg-slate-100 px-3 text-[11px] font-medium text-slate-700 shadow-sm
-                   hover:bg-slate-200 transition
-                   dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-md 
+             bg-slate-100 px-6 text-[11px] font-medium text-slate-700 shadow-sm
+             hover:bg-slate-200 transition
+             dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
           title="Limpiar filtros"
         >
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">

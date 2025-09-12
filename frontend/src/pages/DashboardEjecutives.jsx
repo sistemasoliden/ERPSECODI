@@ -221,9 +221,9 @@ export default function RankingYProgreso() {
 
   /* ======================= Render ======================= */
   return (
-    <div className="min-h-[calc(100vh-88px)] w-full bg-gray-200 dark:bg-slate-950 p-4 md:p-6">
+    <div className="min-h-[calc(100vh-88px)] w-full bg-[#ebe8e8] dark:bg-slate-950 p-4 md:p-6">
       {/* Filtros arriba (idéntico patrón) */}
-      <div className="relative z-30 -mt-4 px-6">
+      <div className="relative z-30 -mt-1 px-6">
         <FiltrosWrapper>
           {(f) => (
             <SyncFiltros value={f} onChange={setFiltros}>
