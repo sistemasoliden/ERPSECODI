@@ -4,10 +4,21 @@ import BaseSecodi from "../models/BaseSecodi.js";
 import AssignmentBatch from "../models/AssignmentBatch.js";
 import AssignmentLog from "../models/AssignmentLog.js";
 import Assignment from "../models/Assignment.js";
+import Opportunity from "../models/Opportunity.js";
 
 const onlyDigits = (v) => String(v || "").replace(/\D/g, "");
 const keyOf = (d) => d?.rucStr || onlyDigits(d?.ruc);
 
+const DEFAULT_ESTADO_ID = "68b859269d14cf7b7e510848"; // Propuesta identificada
+const TIPO_MAP = {
+  "68b859269d14cf7b7e510848": "Propuesta identificada",
+  "68b859269d14cf7b7e510849": "Propuesta calificada",
+  "68b859269d14cf7b7e51084a": "Propuesta entregada",
+  "68b859269d14cf7b7e51084b": "Negociación",
+  "68b859269d14cf7b7e51084c": "Negociación aprobada",
+  "68b859269d14cf7b7e51084d": "Propuesta cerrada ganada",
+  "68b859269d14cf7b7e51084e": "Propuesta cerrada perdida",
+};
 // helper: normaliza payload
 function parseRucs(raw = []) {
   return Array.from(new Set(
@@ -70,6 +81,7 @@ export async function search(req, res) {
 }
 
 // controllers/baseSecodiController.js
+// controllers/baseSecodiController.js
 export async function assignRucs(req, res) {
   try {
     const { rucs = [], userId, allowReassign = false, note = "" } = req.body || {};
@@ -87,7 +99,7 @@ export async function assignRucs(req, res) {
         { ruc:    { $in: norm } },
         { ruc:    { $in: rucsNum } },
       ],
-    }).select("_id ruc rucStr").lean();
+    }).select("_id ruc rucStr razonSocial razon_social").lean();
 
     const key = (d) => d.rucStr || onlyDigits(d.ruc);
     const foundSet = new Set(docs.map(key));
@@ -117,9 +129,11 @@ export async function assignRucs(req, res) {
     // 4) Decide acciones por cada doc
     const toInsert = [];
     const logs = [];
-
     const conflicted = [];
     let modified = 0;
+
+    // 👇 NUEVO: set con los RUCs que finalmente quedarán **asignados a userId**
+    const finalKeys = new Set();
 
     for (const d of docs) {
       const k = key(d);
@@ -134,30 +148,17 @@ export async function assignRucs(req, res) {
           note,
           createdAt: new Date(),
         });
-        logs.push({
-          batchId: batch._id,
-          rucStr: k,
-          prevOwner: null,
-          newOwner: userId,
-          action: "assign",
-          assignedBy,
-        });
+        logs.push({ batchId: batch._id, rucStr: k, prevOwner: null, newOwner: userId, action: "assign", assignedBy });
         modified += 1;
+        finalKeys.add(k);
         continue;
       }
 
-      // Ya tiene dueño
       const lastOwner = String(last.toUserId);
       if (lastOwner === String(userId)) {
-        // Ya lo tiene el mismo usuario → no registramos nuevo Assignment
-        logs.push({
-          batchId: batch._id,
-          rucStr: k,
-          prevOwner: userId,
-          newOwner: userId,
-          action: "no_change",
-          assignedBy,
-        });
+        // Ya lo tiene el mismo usuario
+        logs.push({ batchId: batch._id, rucStr: k, prevOwner: userId, newOwner: userId, action: "no_change", assignedBy });
+        finalKeys.add(k); // 👈 asegurar oportunidad también en este caso
         continue;
       }
 
@@ -170,48 +171,73 @@ export async function assignRucs(req, res) {
           note,
           createdAt: new Date(),
         });
-        logs.push({
-          batchId: batch._id,
-          rucStr: k,
-          prevOwner: last.toUserId,
-          newOwner: userId,
-          action: "reassign",
-          assignedBy,
-        });
+        logs.push({ batchId: batch._id, rucStr: k, prevOwner: last.toUserId, newOwner: userId, action: "reassign", assignedBy });
         modified += 1;
+        finalKeys.add(k);
       } else {
         conflicted.push(k);
-        logs.push({
-          batchId: batch._id,
-          rucStr: k,
-          prevOwner: last.toUserId,
-          newOwner: null,
-          action: "skip_conflict",
-          assignedBy,
-        });
+        logs.push({ batchId: batch._id, rucStr: k, prevOwner: last.toUserId, newOwner: null, action: "skip_conflict", assignedBy });
       }
     }
 
     // 5) Inserta assignments y logs
-    if (toInsert.length) {
-      await Assignment.insertMany(toInsert, { ordered: false });
-    }
-    if (logs.length) {
-      await AssignmentLog.insertMany(logs, { ordered: false });
-    }
+    if (toInsert.length) await Assignment.insertMany(toInsert, { ordered: false });
+    if (logs.length)     await AssignmentLog.insertMany(logs, { ordered: false });
 
     // 6) Actualiza contadores del batch
-    batch.countModified  = modified;
+    batch.countModified   = modified;
     batch.countConflicted = conflicted.length;
     await batch.save();
 
-    // 7) Respuesta con el shape que necesita tu UI
+    // 7) 👇 **AUTO-CREAR / ASEGURAR OPORTUNIDADES ABIERTAS**
+    // Estados de cierre:
+  const CLOSED_IDS = [
+      new mongoose.Types.ObjectId("68b859269d14cf7b7e51084d"), // cerrada ganada
+      new mongoose.Types.ObjectId("68b859269d14cf7b7e51084e"), // cerrada perdida
+    ];
+    // 7) AUTO-CREAR / ASEGURAR OPORTUNIDADES ABIERTAS (cerrada=false)
+const DEFAULT_ESTADO_ID_STR = DEFAULT_ESTADO_ID; // "68b859269d14cf7b7e510848"
+const finalList = Array.from(finalKeys);
+
+// Razon social por RUC
+const baseDocs = await BaseSecodi.find({
+  $or: [{ rucStr: { $in: finalList } }, { ruc: { $in: finalList } }, { ruc: { $in: finalList.map(Number) } }],
+}).select("ruc rucStr razonSocial razon_social").lean();
+
+const razonByRuc = new Map(
+  baseDocs.map(d => [ (d.rucStr || String(d.ruc || "")), (d.razonSocial || d.razon_social || "") ])
+);
+
+// ¿Cuáles ya tienen una oportunidad ABIERTA (cerrada=false) para este owner?
+const alreadyOpen = await Opportunity.find({
+  ruc: { $in: finalList },
+  ownerId: new mongoose.Types.ObjectId(userId),   // 👈 ownerId
+  cerrada: false,                                 // 👈 bandera
+}).select("ruc").lean();
+
+const skip = new Set(alreadyOpen.map(x => x.ruc));
+const toCreate = finalList
+  .filter(r => !skip.has(r))
+  .map(r => ({
+    ownerId: new mongoose.Types.ObjectId(userId), // 👈 ownerId
+    ruc: r,
+    razonSocial: razonByRuc.get(r) || "",
+    estadoId: DEFAULT_ESTADO_ID_STR,              // 👈 string
+    estadoNombre: TIPO_MAP[DEFAULT_ESTADO_ID_STR] || "Propuesta identificada",
+    monto: 0,
+    notas: note || "",
+    cerrada: false,                                // 👈 explícito
+  }));
+
+const opportunitiesCreated = 0;
+    // 8) Respuesta con el shape que necesita tu UI + campo nuevo
     return res.json({
       matched: docs.length,
       modified,
       missing,
       conflicted,
       batchId: batch._id,
+      opportunitiesCreated, // 👈 NUEVO
     });
   } catch (err) {
     console.error("[assignRucs]", err);
@@ -220,8 +246,10 @@ export async function assignRucs(req, res) {
 }
 
 
+
 // GET /api/basesecodi/assigned
 // GET /api/basesecodi/assigned?userId=me&page=&limit=&q=
+// controllers/baseSecodiController.js
 export async function listAssigned(req, res) {
   try {
     const { userId = "me", page = 1, limit = 24, q = "" } = req.query;
@@ -230,37 +258,31 @@ export async function listAssigned(req, res) {
     const nameRx = q ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null;
 
     const pipeline = [
-      { $sort: { rucId: 1, createdAt: -1, _id: -1 } },     // para quedarnos con la última por ruc
+      { $sort: { rucId: 1, createdAt: -1, _id: -1 } },        // último assignment por ruc
       { $group: { _id: "$rucId", doc: { $first: "$$ROOT" } } },
       { $replaceRoot: { newRoot: "$doc" } },
-      { $match: { toUserId: oid } },                       // solo dueño vigente
-      {
-        $lookup: {                                         // trae el detalle del RUC
-          from: "basesecodi",
-          localField: "rucId",
-          foreignField: "_id",
-          as: "r",
-        },
-      },
+      { $match: { toUserId: oid } },                          // dueño vigente (tú)
+      // ⬇️ Mostrar SOLO los no tipificados
+      { $match: { $or: [ { tipifiedAt: { $exists: false } }, { tipifiedAt: null } ] } },
+
+      { $lookup: { from: "basesecodi", localField: "rucId", foreignField: "_id", as: "r" } },
       { $unwind: "$r" },
-      ...(q
-        ? [{
-            $match: {
-              $or: [
-                { "r.razonSocial": { $regex: nameRx } },
-                { "r.razon_social": { $regex: nameRx } },
-                { "r.rucStr": { $regex: q } },
-                { "r.ruc": { $regex: q } },
-              ],
-            },
-          }]
-        : []),
-      {
-        $facet: {
+
+      ...(q ? [{
+        $match: {
+          $or: [
+            { "r.razonSocial": { $regex: nameRx } },
+            { "r.razon_social": { $regex: nameRx } },
+            { "r.rucStr": { $regex: q } },
+            { "r.ruc": { $regex: q } },
+          ],
+        },
+      }] : []),
+
+      { $facet: {
           items: [{ $skip: skip }, { $limit: parseInt(limit,10) }],
           total: [{ $count: "n" }],
-        },
-      },
+      }},
     ];
 
     const agg = await Assignment.aggregate(pipeline);
@@ -268,8 +290,8 @@ export async function listAssigned(req, res) {
     const total = agg[0]?.total?.[0]?.n ?? 0;
 
     const items = itemsAgg.map(a => ({
-      ...a.r,                         // campos del RUC (BaseSecodi)
-      assignedAt: a.createdAt,        // cuándo quedó vigente
+      ...a.r,
+      assignedAt: a.createdAt,
       assignedBy: a.assignedBy,
       note: a.note,
     }));
@@ -286,9 +308,7 @@ export async function listAssigned(req, res) {
   }
 }
 
-// GET /api/basesecodi/stats
-// controllers/baseSecodiController.js
-
+// controllers/baseSecodiController.js (getStats)
 export async function getStats(req, res) {
   try {
     const userId = req.query.userId === "me" ? req.user?._id : req.query.userId;
@@ -301,41 +321,44 @@ export async function getStats(req, res) {
       { $sort: { rucId: 1, createdAt: -1, _id: -1 } },
       { $group: { _id: "$rucId", doc: { $first: "$$ROOT" } } },
       { $replaceRoot: { newRoot: "$doc" } },
-      { $match: { toUserId: oid } },
-      {
-        $lookup: {
-          from: "basesecodi",
-          localField: "rucId",
-          foreignField: "_id",
-          as: "r",
-        },
-      },
+      { $match: { toUserId: oid } }, // dueño vigente
+
+      { $lookup: { from: "basesecodi", localField: "rucId", foreignField: "_id", as: "r" } },
       { $unwind: "$r" },
-      {
-        $group: {
+
+      { $group: {
           _id: null,
-          total: { $sum: 1 },
-          lastAssignedAt: { $max: "$createdAt" },
-          sumTotalLines: { $sum: { $ifNull: ["$r.totalLines", 0] } },
-          today: {
-            $sum: { $cond: [{ $gte: ["$createdAt", startOfToday] }, 1, 0] },
-          },
-        },
-      },
+          totalAssigned:   { $sum: 1 },
+          lastAssignedAt:  { $max: "$createdAt" },
+          sumTotalLines:   { $sum: { $ifNull: ["$r.totalLines", 0] } },
+          completedTotal:  { $sum: { $cond: [ { $ne: ["$tipifiedAt", null] }, 1, 0 ] } },
+          completedToday:  { $sum: { $cond: [
+                                { $and: [
+                                  { $ne: ["$tipifiedAt", null] },
+                                  { $gte: ["$tipifiedAt", startOfToday] }
+                                ]},
+                                1, 0
+                              ] } },
+      }},
+
+      { $project: {
+          total: { $subtract: ["$totalAssigned", "$completedTotal"] }, // Restantes
+          lastAssignedAt: 1,
+          sumTotalLines: 1,
+          completedToday: 1,
+      }},
     ];
 
-    const x = await Assignment.aggregate(pipeline);
-    const stats = x[0] || {};
-
+    const s = (await Assignment.aggregate(pipeline))[0] || {};
     res.json({
-      total: stats.total || 0,
-      lastAssignedAt: stats.lastAssignedAt || null,
-      today: stats.today || 0,
-      sumTotalLines: stats.sumTotalLines || 0,
+      total: s.total || 0,
+      lastAssignedAt: s.lastAssignedAt || null,
+      sumTotalLines: s.sumTotalLines || 0,
+      completedToday: s.completedToday || 0,
     });
   } catch (e) {
     console.error("getStats error:", e);
-    return res.status(500).json({ message: "Error en stats" });
+    res.status(500).json({ message: "Error en stats" });
   }
 }
 
@@ -462,3 +485,42 @@ export async function findByRucs(req, res) {
     return res.status(500).json({ message: "Error buscando RUCs." });
   }
 }
+
+// controllers/baseSecodiController.js
+// controllers/baseSecodiController.js
+// controllers/baseSecodiController.js
+export const markTipificada = async (req, res) => {
+  try {
+    const userId = String(req.user?._id || req.user?.id);
+    const rucRaw = String(req.body?.ruc || "");
+    const ruc = rucRaw.replace(/\D/g, "");
+    if (ruc.length !== 11) return res.status(400).json({ error: "RUC inválido" });
+
+    // Buscar el doc en BaseSecodi por rucStr o ruc (string/number)
+    const base = await BaseSecodi.findOne({
+      $or: [{ rucStr: ruc }, { ruc }, { ruc: Number(ruc) }],
+    }).select("_id");
+    if (!base) return res.status(404).json({ error: "RUC no encontrado" });
+
+    // Verificar que el último assignment pertenece al usuario
+    const last = await Assignment.findOne({ rucId: base._id })
+      .sort({ createdAt: -1, _id: -1 })
+      .select("toUserId")
+      .lean();
+
+    if (!last || String(last.toUserId) !== userId) {
+      return res.status(403).json({ error: "Este RUC no está asignado a ti" });
+    }
+
+    // Marcar como completado en la base
+    await BaseSecodi.updateOne(
+      { _id: base._id },
+      { $set: { assignedStatus: "completed", tipificadaAt: new Date() } }
+    );
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("markTipificada", e);
+    return res.status(500).json({ error: "Error marcando tipificada" });
+  }
+};

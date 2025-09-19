@@ -87,7 +87,7 @@ const normalizeFilters = (f = {}) => {
   out.producto = pickVal(f.producto);
   out.tipoVenta = pickVal(f.tipoVenta);
   out.soloPdv = Boolean(f.soloPdv);
-
+out.cfMode = f.cfMode || "normal";
   return out;
 };
 
@@ -204,6 +204,7 @@ export default function ReportVentasConsultores() {
           producto: nf.producto,
           tipoVenta: nf.tipoVenta,
           pdv: nf.soloPdv ? "si" : undefined,
+           cfMode: nf.cfMode || "normal",
         });
 
         const { data: res } = await api.get("/ventas/tablaconsultores", {

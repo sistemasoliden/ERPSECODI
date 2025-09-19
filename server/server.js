@@ -29,6 +29,12 @@ import ventasActivacionRoutes from "./routes/ventasActivacionRoutes.js";
 import opportunityRoutes from "./routes/opportunityRoutes.js";
 import ventasEquiposRoutes from "./routes/ventasEquiposRoutes.js";
 import ventasPlanesRoutes from "./routes/ventasPlanesRoutes.js";
+import contactoEmpresasRoutes from "./routes/contactoEmpresasRoutes.js";
+import unidadServicioRoutes from "./routes/unidadServicioRoutes.js";
+import dataSalesforceRoutes from "./routes/dataSalesforceRoutes.js";
+import tipificacionesRoutes from "./routes/tipificacionesRoutes.js";
+import assignmentsRoutes from "./routes/assignmentsRoutes.js";
+import contactTypesRoutes from "./routes/contactTypesRoutes.js";
 // Tu modelo User ya está importado desde los controladores o rutas.
 
 dotenv.config();
@@ -68,6 +74,16 @@ app.use("/api/ventas-equipos", ventasEquiposRoutes);
 app.use("/api/oportunidades", opportunityRoutes);
 app.use("/api/ventas-planes", ventasPlanesRoutes);
 app.use("/api/ventas-activacion", ventasActivacionRoutes); // 👉 Servir frontend (solo en producción)
+
+app.use("/api/contactos-empresas", contactoEmpresasRoutes);
+app.use("/api/contact-types", contactTypesRoutes); 
+app.use("/api/unidades-servicios", unidadServicioRoutes);
+
+app.use("/api/data-salesforce", dataSalesforceRoutes);
+app.use("/api/tipificaciones", tipificacionesRoutes);
+app.use("/api/assignments", assignmentsRoutes);
+
+
 // 👉 Servir frontend (SPA)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

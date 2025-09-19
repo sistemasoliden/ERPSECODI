@@ -9,6 +9,7 @@ import {
   assignRucs,
   listBatches,
   getBatchLogs,
+  markTipificada
 } from "../controllers/baseSecodiController.js";
 
 const router = Router();
@@ -28,6 +29,7 @@ router.post(
   ensureTargetIsActiveCommercial,
   assignRucs
 );
+router.post("/mark-tipificada", verifyToken, markTipificada);
 
 // Admin (historial)
 router.get("/admin/batches", verifyToken, requireRoles([ROLES_IDS.sistemas, ROLES_IDS.gerencia]), listBatches);

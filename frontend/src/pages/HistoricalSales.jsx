@@ -105,6 +105,7 @@ export default function ReportVentasProductos() {
           producto: filtros.producto,
           tipoVenta: filtros.tipoVenta,
           pdv: filtros.soloPdv ? "si" : undefined,
+            cfMode: filtros.cfMode || "normal",
         });
 
         const { data: res } = await api.get("/ventas/tablaproductos", {

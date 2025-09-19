@@ -32,7 +32,7 @@ export default function MiBase() {
       setTotal(total || 0);
       setPages(pages || 1);
       if (p) setPage(p);
-    } catch (e) {
+    } catch (err) {
       setErr("No se pudo cargar tu base asignada.");
     } finally {
       setLoading(false);
@@ -52,20 +52,19 @@ export default function MiBase() {
   const canPrev = page > 1;
   const canNext = page < pages;
 
-  const handleAgregarOportunidad = async () => {
-    const ruc = window.prompt("Ingresa el RUC del cliente para crear la oportunidad:");
-    if (!ruc) return;
-    try {
-      await api.post("/oportunidades", { ruc: String(ruc).trim() }, authHeader);
-navigate("/mis-oportunidades");
-    } catch (e) {
-      console.error(e);
-      alert("No se pudo crear la oportunidad. Verifica el RUC.");
-    }
-  };
+  
+
+ const handleTipificar = async (ruc) => {
+   setItems(prev =>
+     prev.filter(it => String(it.rucStr || it.ruc) !== String(ruc).replace(/\D/g, ""))
+   );
+   fetchStats(); // el backend ya cuenta usando Assignment.tipifiedAt
+ }
+  // NUEVO: tipificar (completar) un RUC y sacarlo de la base del ejecutivo
+
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-[#ebe8e8]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-bold uppercase text-gray-800">Mi Base Asignada</h1>
@@ -85,9 +84,7 @@ navigate("/mis-oportunidades");
           <button onClick={() => { setQ(""); setPage(1); }} className="px-3 py-2 bg-gray-200 text-gray-800 text-xs rounded">
             Limpiar
           </button>
-          <button onClick={handleAgregarOportunidad} className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded">
-            Agregar oportunidad
-          </button>
+        
         </div>
       </div>
 
@@ -107,17 +104,25 @@ navigate("/mis-oportunidades");
           <div className="text-xl font-extrabold">{stats?.sumTotalLines ?? "—"}</div>
         </div>
         <div className="rounded-xl border border-gray-300 bg-white p-3">
-          <div className="text-[10px] uppercase text-gray-500">Hoy</div>
-          <div className="text-xl font-extrabold">{stats?.today ?? "—"}</div>
+          <div className="text-[10px] uppercase text-gray-500">Tipificadas hoy</div>
+  <div className="text-xl font-extrabold">{stats?.completedToday ?? 0}</div>
         </div>
+ <div className="rounded-xl border border-gray-300 bg-white p-3">
+   <div className="text-[10px] uppercase text-gray-500">Restantes</div>
+   <div className="text-xl font-extrabold">{total}</div>
+ </div>
+
       </div>
 
       {err && <div className="text-red-700 text-sm">{err}</div>}
       {loading && <div className="text-sm text-gray-600">Cargando…</div>}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map((it) => (<RucCard key={it._id || it.ruc} item={it} />))}
-      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-4">
+ {items.map((it) => (
+  <RucCard key={it._id} item={it} onTipificar={handleTipificar} />
+))}
+</div>
+
 
       {pages > 1 && (
         <div className="flex items-center justify-center gap-3 pt-2">

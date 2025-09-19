@@ -253,12 +253,11 @@ export default function AsignarRucs() {
       )}
 
       {/* Resultado Asignación */}
-      {assignResult && (
-        <div className="space-y-3 border-t pt-4">
-          <h2 className="text-lg font-semibold text-gray-800">
-            Resultado de Asignación
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+     
+        {assignResult && (
+  <div className="space-y-3 border-t pt-4">
+    <h2 className="text-lg font-semibold text-gray-800">Resultado de Asignación</h2>
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
             <div className="rounded border p-3">
               <div className="text-gray-500 text-[11px] uppercase">Coincidencias</div>
               <div className="text-xl font-bold">{assignResult.matched ?? 0}</div>
@@ -275,6 +274,10 @@ export default function AsignarRucs() {
               <div className="text-gray-500 text-[11px] uppercase">Conflictos</div>
               <div className="text-xl font-bold">{assignResult.conflicted?.length ?? 0}</div>
             </div>
+            <div className="rounded border p-3">
+        <div className="text-gray-500 text-[11px] uppercase">Oportunidades creadas</div>
+        <div className="text-xl font-bold">{assignResult.opportunitiesCreated ?? 0}</div>
+      </div>
           </div>
 
           {(assignResult.missing?.length || assignResult.conflicted?.length) && (

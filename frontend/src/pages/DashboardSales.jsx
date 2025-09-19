@@ -157,6 +157,7 @@ const buildParams = (obj) => {
 
 export default function DashboardComparativas() {
   const [filtros, setFiltros] = useState({});
+
   const [tipoVistaComparativa, setTipoVistaComparativa] = useState("anual");
   const [mesComparativa, setMesComparativa] = useState(
     new Date().getMonth() + 1
@@ -175,11 +176,13 @@ export default function DashboardComparativas() {
   // Barras (tipo de venta / drilldown)
   const [tipoSeleccionado] = useState(null);
   const [barData, setBarData] = useState([]);
-  const [barLoading] = useState(false);
+  const [barLoading, setBarLoading] = useState(false);
 
   // Dona PDV
   const [distPDV, setDistPDV] = useState([]);
   const firstRender = React.useRef(true);
+
+  const [drillTipoV, setDrillTipoV] = useState(null);
   // Info de fecha actual
   const todayInfo = useMemo(() => {
     const now = new Date();
@@ -220,7 +223,10 @@ export default function DashboardComparativas() {
   }, [dataMesVsYTD, todayInfo]);
 
   // Asegura que las ReferenceLine entren en el gráfico
-
+  const barDataSorted = React.useMemo(
+    () => [...barData].sort((a, b) => a.name.localeCompare(b.name)),
+    [barData]
+  );
   const monthLabel = useMemo(
     () => ({
       "01": "Ene",
@@ -247,6 +253,35 @@ export default function DashboardComparativas() {
   }, []);
 
   useEffect(() => {
+    const load = async () => {
+      setBarLoading(true);
+      try {
+        const params = buildParams({
+          estado: filtros.estado,
+          year: filtros.anio,
+          month: filtros.mes,
+          producto: filtros.producto,
+          tipoVenta: filtros.tipoVenta,
+          pdv: filtros.soloPdv ? "si" : "",
+          cfMode: filtros.cfMode,
+          // 👇 si hay drill, pide por productos de ese TIPO_V
+          ...(drillTipoV ? { detallePor: "tipoVenta", tipo: drillTipoV } : {}),
+        });
+        const { data } = await api.get("/ventas/distribucion-tipo-venta", {
+          params,
+        });
+        setBarData(data?.data || []);
+      } catch (e) {
+        console.error(e);
+        setBarData([]);
+      } finally {
+        setBarLoading(false);
+      }
+    };
+    load();
+  }, [filtros, drillTipoV]);
+
+  useEffect(() => {
     if (loading) {
       document.body.style.overflow = "hidden";
     } else {
@@ -271,6 +306,7 @@ export default function DashboardComparativas() {
           producto: filtros.producto,
           tipoVenta: filtros.tipoVenta,
           pdv: filtros.soloPdv ? "si" : "",
+          cfMode: filtros.cfMode, // viene del FiltrosWrapper
         });
 
         const [
@@ -404,8 +440,10 @@ export default function DashboardComparativas() {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             {/* CF */}
             <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:bg-neutral-900">
-              <h3 className="mb-3 text-center text-sm text-slate-900">
-                Cargo Fijo sin Igv
+              <h3 className="mb-3 text-center text-sm text-slate-900 dark:text-slate-100">
+                {filtros.cfMode === "facturacion"
+                  ? "CF Facturación Dscto (SIN IGV)"
+                  : "Cargo Fijo (SIN IGV)"}
               </h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart
@@ -632,13 +670,24 @@ export default function DashboardComparativas() {
               {/* Header centrado */}
               <div className="mb-3 text-center">
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  Distribución por Tipo de Venta
+                  {drillTipoV
+                    ? `Productos en "${drillTipoV}"`
+                    : "Distribución por Tipo de Venta"}
                 </h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Líneas (Q) y Cargo Fijo (CF)
                 </p>
+                {drillTipoV && (
+                  <button
+                    className="mt-2 inline-flex items-center rounded-md border px-2 py-1 text-xs
+                 text-slate-600 hover:bg-slate-50 dark:text-slate-300
+                   dark:hover:bg-slate-800"
+                    onClick={() => setDrillTipoV(null)}
+                  >
+                    ← Volver a Tipos de Venta
+                  </button>
+                )}
               </div>
-
               {barLoading ? (
                 <div className="flex flex-1 items-center justify-center">
                   <Loader variant="inline" message="Cargando…" />
@@ -647,10 +696,8 @@ export default function DashboardComparativas() {
                 <div className="min-h-0 flex-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
-                      data={[...barData].sort((a, b) =>
-                        a.name.localeCompare(b.name)
-                      )}
-                      margin={{ top: 20, right: 12, left: 12, bottom: 18 }}
+                      data={barDataSorted}
+                      margin={{ top: 20, right: 12, left: 12, bottom: 25 }}
                     >
                       {/* 🎨 Degradado elegante para la barra */}
                       <defs>
@@ -722,6 +769,21 @@ export default function DashboardComparativas() {
 
                       {/* Una sola barra (Q) */}
                       <Bar dataKey="totalQ" fill="url(#barFill)" barSize={36}>
+                        {barDataSorted.map((entry, idx) => (
+                          <Cell
+                            key={`cell-${idx}`}
+                            cursor="pointer"
+                            onClick={() => {
+                              // si ya estás en drill, no profundizar más
+                              if (!drillTipoV) setDrillTipoV(entry.name); // entry.name = TIPO_V
+                            }}
+                            // resaltar barra seleccionada
+                            fill={!drillTipoV ? "url(#barFill)" : "#2563eb"}
+                            opacity={
+                              drillTipoV && entry.name !== drillTipoV ? 0.35 : 1
+                            }
+                          />
+                        ))}
                         <LabelList
                           dataKey="totalQ"
                           position="top"

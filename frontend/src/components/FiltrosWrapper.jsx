@@ -8,6 +8,7 @@ export default function FiltrosWrapper({ children, onChangeFilters }) {
   const [mes, setMes] = useState([]); // [1,2,3]
   const [tipoVenta, setTipoVenta] = useState([]); // ["Alta Nueva"...]
   const [soloPdv, setSoloPdv] = useState(false);
+  const [cfMode, setCfMode] = useState("normal"); // "normal" | "facturacion"
 
   const handleClear = () => {
     setEstado([]);
@@ -15,12 +16,13 @@ export default function FiltrosWrapper({ children, onChangeFilters }) {
     setMes([]);
     setTipoVenta([]);
     setSoloPdv(false);
+    setCfMode("normal");
   };
 
   // 🔔 Notifica al padre cada vez que cambie algún filtro
   useEffect(() => {
-    onChangeFilters?.({ estado, anio, mes, tipoVenta, soloPdv });
-  }, [estado, anio, mes, tipoVenta, soloPdv, onChangeFilters]);
+    onChangeFilters?.({ estado, anio, mes, tipoVenta, soloPdv, cfMode });
+  }, [estado, anio, mes, tipoVenta, soloPdv, cfMode, onChangeFilters]);
 
   return (
     <div className="space-y-4">
@@ -36,9 +38,11 @@ export default function FiltrosWrapper({ children, onChangeFilters }) {
         pdvOnly={soloPdv}
         onChangePdvOnly={setSoloPdv}
         onClear={handleClear}
+        cfMode={cfMode}
+        onChangeCfMode={setCfMode}
       />
       {/* Puedes ignorar el argumento si no lo necesitas */}
-      <div>{children?.({ estado, anio, mes, tipoVenta, soloPdv })}</div>
+      <div>{children?.({ estado, anio, mes, tipoVenta, soloPdv, cfMode })}</div>
     </div>
   );
 }

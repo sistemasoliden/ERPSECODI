@@ -214,6 +214,9 @@ export default function EstadoVentaFilter({
   pdvOnly,
   onChangePdvOnly,
 
+  cfMode = "normal", // "normal" | "facturacion"
+  onChangeCfMode, // setter
+
   onClear,
   className = "",
 }) {
@@ -265,18 +268,18 @@ export default function EstadoVentaFilter({
   const yearsSel = Array.isArray(yearValue)
     ? yearValue
     : Array.isArray(yearLocal)
-      ? yearLocal
-      : [];
+    ? yearLocal
+    : [];
   const monthsSel = Array.isArray(monthValue)
     ? monthValue
     : monthValue
-      ? [monthValue]
-      : [];
+    ? [monthValue]
+    : [];
   const tiposSel = Array.isArray(tipoVentaValue)
     ? tipoVentaValue
     : tipoVentaValue
-      ? [tipoVentaValue]
-      : [];
+    ? [tipoVentaValue]
+    : [];
 
   useEffect(() => {
     (async () => {
@@ -410,6 +413,38 @@ export default function EstadoVentaFilter({
             ].join(" ")}
           />
         </button>
+      </div>
+
+      {/* Selector CF (Normal vs Facturación SIN IGV) */}
+      <div className="flex items-center gap-2">
+        <div className="inline-flex rounded-md border border-slate-300 overflow-hidden dark:border-slate-600">
+          <button
+            type="button"
+            onClick={() => onChangeCfMode?.("normal")}
+            className={[
+              "px-3 py-3 text-[11px] transition",
+              cfMode === "normal"
+                ? "bg-emerald-500 text-white"
+                : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+            ].join(" ")}
+            title="Usar CF SIN IGV"
+          >
+            Cf normal
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeCfMode?.("facturacion")}
+            className={[
+              "px-3 py-1.5 text-[11px] transition border-l border-slate-300 dark:border-slate-600",
+              cfMode === "facturacion"
+                ? "bg-emerald-500 text-white"
+                : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+            ].join(" ")}
+            title="Usar CF FACTURACIÓN DSCTO SIN IGV"
+          >
+            Cf real PDV
+          </button>
+        </div>
       </div>
 
       {/* Botón limpiar */}

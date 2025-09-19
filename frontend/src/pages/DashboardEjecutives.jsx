@@ -135,6 +135,7 @@ export default function RankingYProgreso() {
           producto: filtros.producto,
           tipoVenta: filtros.tipoVenta,
           pdv: filtros.soloPdv ? "si" : "",
+          cfMode: filtros.cfMode || "normal",
         };
 
         const [resQ, resCF] = await Promise.all([
@@ -191,6 +192,7 @@ export default function RankingYProgreso() {
           producto: filtros.producto,
           tipoVenta: filtros.tipoVenta,
           pdv: filtros.soloPdv ? "si" : "",
+          cfMode: filtros.cfMode || "normal",
         });
 
         const res = await api.get("/ventas/consultor-progreso", { params });
