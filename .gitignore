@@ -1,0 +1,4 @@
+﻿node_modules/
+**/node_modules/
+**/.local-chromium/
+**/chrome-win/
