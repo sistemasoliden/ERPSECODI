@@ -1,4 +1,45 @@
-﻿node_modules/
+﻿# === Dependencias ===
+node_modules/
 **/node_modules/
+
+# === Builds / Dist / Output ===
+dist/
+build/
+out/
+**/dist/
+**/build/
+
+# === Archivos de entorno ===
+.env
+.env.local
+.env.development
+.env.production
+**/.env
+
+# === Logs ===
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# === Config / Sistema ===
+.DS_Store
+Thumbs.db
+
+# === IDEs / Editores ===
+.vscode/
+.idea/
+*.swp
+
+# === Testing / Coverage ===
+coverage/
+**/coverage/
+
+# === Navegadores o Puppeteer ===
 **/.local-chromium/
 **/chrome-win/
+
+# === Archivos temporales ===
+*.tmp
+*.temp

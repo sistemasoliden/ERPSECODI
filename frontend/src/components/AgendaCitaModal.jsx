@@ -2,13 +2,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
+import useLockBodyScroll from "../hooks/useLockBodyScroll";
 
 export default function AgendaCitaModal({
   open,
   onClose,
   defaultData = {}, // { ruc, razonSocial, opportunityId, titulo }
-  onCreated,        // callback opcional para refrescar padre
+  onCreated, // callback opcional para refrescar padre
 }) {
+  useLockBodyScroll(open);
+
   const { token } = useAuth();
   const authHeader = useMemo(
     () => ({ headers: { Authorization: `Bearer ${token}` } }),
@@ -19,8 +22,7 @@ export default function AgendaCitaModal({
   const [mensaje, setMensaje] = useState("");
   const [direccion, setDireccion] = useState("");
   const [fecha, setFecha] = useState(""); // yyyy-mm-dd
-  const [hora, setHora] = useState("");   // HH:mm
-  const [titulo, setTitulo] = useState(defaultData?.titulo || "Cita");
+  const [hora, setHora] = useState(""); // HH:mm
   const [saving, setSaving] = useState(false);
 
   // precarga
@@ -29,7 +31,6 @@ export default function AgendaCitaModal({
     setTipo("presencial");
     setMensaje("");
     setDireccion("");
-    setTitulo(defaultData?.titulo || `Cita con ${defaultData?.razonSocial || ""}`.trim());
     // fecha/hora inicial: ahora redondeado a próxima hora
     const now = new Date();
     now.setMinutes(0, 0, 0);
@@ -60,8 +61,9 @@ export default function AgendaCitaModal({
 
     setSaving(true);
     try {
+      const titulo = (defaultData?.titulo || "Cita").trim();
       const body = {
-        titulo: (titulo || "").trim() || "Cita",
+        titulo,
         tipo,
         mensaje,
         direccion,
@@ -71,20 +73,22 @@ export default function AgendaCitaModal({
         opportunityId: defaultData?.opportunityId,
       };
       await api.post("/citas", body, authHeader);
-      window.dispatchEvent(new CustomEvent("notifications:push", {
-    detail: {
-      _id: `temp-${Date.now()}`,
-      type: "cita",
-      title: "Cita programada",
-      message: `${body.titulo} — ${body.razonSocial || body.ruc || ""}`,
-      scheduledAt: body.inicio,
-      createdAt: new Date().toISOString(),
-      read: false,
-    }
-  }));
+      window.dispatchEvent(
+        new CustomEvent("notifications:push", {
+          detail: {
+            _id: `temp-${Date.now()}`,
+            type: "cita",
+            title: "Cita programada",
+            message: `${titulo} — ${body.razonSocial || body.ruc || ""}`,
+            scheduledAt: body.inicio,
+            createdAt: new Date().toISOString(),
+            read: false,
+          },
+        })
+      );
 
-  // Y pide una recarga al backend para reemplazar la “temp”
-  window.dispatchEvent(new Event("notifications:reload"));
+      // Y pide una recarga al backend para reemplazar la “temp”
+      window.dispatchEvent(new Event("notifications:reload"));
       onCreated?.();
       close();
     } catch (e) {
@@ -97,9 +101,9 @@ export default function AgendaCitaModal({
 
   return (
     <div className="fixed inset-0 z-[60]">
-      <div className="absolute inset-0 bg-black/30" onClick={close} />
-      <div className="absolute inset-x-0 top-10 mx-auto w-[min(560px,94%)]">
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+      <div className="absolute inset-0 bg-black/50" onClick={close} />
+      <div className="absolute inset-0 grid place-items-center p-4">
+        <div className="w-[min(560px,94%)] max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-gray-200">
           {/* Header */}
           <div className="px-5 py-4 border-b flex items-center justify-between">
             <div className="font-semibold text-gray-900">Agendar cita</div>
@@ -115,25 +119,20 @@ export default function AgendaCitaModal({
           {/* Body */}
           <div className="p-5 grid grid-cols-1 gap-4 text-sm">
             <div>
-              <label className="text-[11px] uppercase text-gray-500">Empresa</label>
+              <label className="text-[11px] uppercase text-gray-500">
+                Empresa
+              </label>
               <div className="mt-0.5 font-semibold text-gray-900">
-                {defaultData?.razonSocial || "—"} {defaultData?.ruc ? `(${defaultData.ruc})` : ""}
+                {defaultData?.razonSocial || "—"}{" "}
+                {defaultData?.ruc ? `(${defaultData.ruc})` : ""}
               </div>
-            </div>
-
-            <div>
-              <label className="text-[11px] uppercase text-gray-500">Título</label>
-              <input
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                value={titulo}
-                onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Ej. Reunión de levantamiento"
-              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-[11px] uppercase text-gray-500">Tipo</label>
+                <label className="text-[11px] uppercase text-gray-500">
+                  Tipo
+                </label>
                 <select
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
                   value={tipo}
@@ -145,7 +144,9 @@ export default function AgendaCitaModal({
               </div>
 
               <div>
-                <label className="text-[11px] uppercase text-gray-500">Fecha</label>
+                <label className="text-[11px] uppercase text-gray-500">
+                  Fecha
+                </label>
                 <input
                   type="date"
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
@@ -155,7 +156,9 @@ export default function AgendaCitaModal({
               </div>
 
               <div>
-                <label className="text-[11px] uppercase text-gray-500">Hora</label>
+                <label className="text-[11px] uppercase text-gray-500">
+                  Hora
+                </label>
                 <input
                   type="time"
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
@@ -172,13 +175,19 @@ export default function AgendaCitaModal({
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
                   value={direccion}
                   onChange={(e) => setDireccion(e.target.value)}
-                  placeholder={tipo === "virtual" ? "Zoom/Meet/Teams" : "Av. Siempre Viva 123"}
+                  placeholder={
+                    tipo === "virtual"
+                      ? "Zoom/Meet/Teams"
+                      : "Av. Siempre Viva 123"
+                  }
                 />
               </div>
             </div>
 
             <div>
-              <label className="text-[11px] uppercase text-gray-500">Mensaje / Nota</label>
+              <label className="text-[11px] uppercase text-gray-500">
+                Mensaje / Nota
+              </label>
               <textarea
                 rows={3}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 resize-none"

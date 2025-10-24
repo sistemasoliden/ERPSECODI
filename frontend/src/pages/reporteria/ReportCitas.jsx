@@ -1,20 +1,61 @@
 // src/pages/reporteria/ReportCitas.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList,
-  PieChart, Pie, Cell, Legend,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  LabelList,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  CartesianGrid,
 } from "recharts";
 import api from "../../api/axios";
 import { useAuth } from "../../context/AuthContext";
-
-// Ajusta el path si tu archivo se llama distinto (p.ej. ReportFilters.jsx)
 import ReportRangeFilters from "../../components/reporteria/ReportFilters";
 
-/* ───────────── Helpers UI inline ───────────── */
+/* ================== THEME / ESTILOS ================== */
+const THEME = {
+  pageBg: "#F2F0F0",
+  card: "rounded-lg border border-gray-300 bg-white p-4 shadow-md",
+  section: "rounded-lg border border-gray-200 bg-white p-4 shadow-sm",
+  title: "text-sm font-bold text-blue-800",
+  tooltipBox: {
+    backgroundColor: "white",
+    border: "1px solid #ddd",
+    borderRadius: "8px",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+    padding: "8px 12px",
+    fontSize: "12px",
+    color: "black",
+    textAlign: "center",
+  },
+  tooltipLabel: { color: "#111827", fontWeight: "bold", fontSize: "13px" },
+  lineColor: "#af0c0e",
+  colors: [
+    "#0ea5e9",
+    "#14b8a6",
+    "#f59e0b",
+    "#a855f7",
+    "#10b981",
+    "#ef4444",
+    "#fb7185",
+    "#6366f1",
+  ],
+};
+
+/* ───────────── Helpers UI ───────────── */
 function Box({ title, children, className = "" }) {
   return (
-    <div className={`rounded-xl border border-gray-200 bg-white p-4 shadow-sm ${className}`}>
-      {title && <div className="mb-2 text-sm font-semibold text-slate-700">{title}</div>}
+    <div className={`${THEME.card} ${className}`}>
+      {title && (
+        <div className="mb-2 mt-2 ml-7 text-xs font-bold text-red-900">
+          {title}</div>
+      )}
       {children}
     </div>
   );
@@ -22,35 +63,91 @@ function Box({ title, children, className = "" }) {
 function Empty({ text = "Sin datos" }) {
   return <div className="py-12 text-center text-sm text-gray-500">{text}</div>;
 }
-const REPORT_COLORS = [
-  "#0ea5e9", "#14b8a6", "#f59e0b", "#a855f7",
-  "#10b981", "#ef4444", "#fb7185", "#6366f1",
-];
-const LineTooltip = ({ active, payload, label }) =>
-  !active || !payload?.length ? null : (
-    <div className="rounded-md border border-slate-200 bg-white px-3 py-2 shadow-md">
-      <div className="text-[11px] font-semibold text-slate-700">Día {label}</div>
-      <div className="text-sm font-extrabold text-slate-900">{payload[0]?.value ?? 0}</div>
+
+/* ───────────── Formateos ───────────── */
+const formatNumber = (n) =>
+  new Intl.NumberFormat("es-PE").format(Math.round(Number(n || 0)));
+
+/* Tooltips unificados */
+const LineTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div
+      style={{
+        ...THEME.tooltipBox,
+        backgroundColor: "white",
+        border: "1px solid #e5e7eb",
+        borderRadius: 4, // leve redondeo
+        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+        padding: "6px 8px", // compacto
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          ...THEME.tooltipLabel,
+          color: "#475569",
+          fontSize: 10, // letra XS
+          fontWeight: 600,
+          textTransform: "uppercase",
+          marginBottom: 2,
+        }}
+      >
+        Día {label}
+      </div>
+
+      <div className="text-[11px] font-bold text-slate-900 leading-tight">
+        {formatNumber(payload[0]?.value ?? 0)}
+      </div>
     </div>
   );
-const PieTooltip = ({ active, payload }) =>
-  !active || !payload?.length ? null : (
-    <div className="rounded-md border border-slate-200 bg-white px-3 py-2 shadow-md">
-      <div className="text-[11px] font-semibold text-slate-700">{payload[0]?.name}</div>
-      <div className="text-sm font-extrabold text-slate-900">
-        {payload[0]?.value ?? 0}{" "}
-        <span className="text-[11px] font-semibold text-slate-500">
+};
+const PieTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div
+      style={{
+        ...THEME.tooltipBox,
+        backgroundColor: "white",
+        border: "1px solid #e5e7eb",
+        borderRadius: 4, // borde sutil
+        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+        padding: "6px 8px", // compacto
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          ...THEME.tooltipLabel,
+          color: "#475569",
+          fontSize: 10, // letra XS
+          fontWeight: 600,
+          textTransform: "uppercase",
+          marginBottom: 2,
+        }}
+      >
+        {payload[0]?.name}
+      </div>
+
+      <div className="text-[11px] font-bold text-slate-900 leading-tight">
+        {formatNumber(payload[0]?.value ?? 0)}{" "}
+        <span className="text-[10px] font-semibold text-slate-500">
           ({payload[0]?.payload?.__pct ?? 0}%)
         </span>
       </div>
     </div>
   );
+};
+
+/* Gradiente */
 function LineGradientDef() {
   return (
     <defs>
       <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#0ea5e9" />
-        <stop offset="100%" stopColor="#14b8a6" />
+        <stop offset="0%" stopColor={THEME.lineColor} />
+        <stop offset="100%" stopColor={THEME.lineColor} />
       </linearGradient>
     </defs>
   );
@@ -65,11 +162,15 @@ function normalizeSerieDaysFull(data, month, year) {
         const dayRaw =
           Number(d.day ?? d.x ?? d.fechaDia ?? d.d) ||
           (typeof d.date === "string" ? Number(d.date.split("-")[2]) : 0);
-        return { day: dayRaw || 0, total: Number(d.total ?? d.count ?? d.y ?? d.valor ?? 0) };
+        return {
+          day: dayRaw || 0,
+          total: Number(d.total ?? d.count ?? d.y ?? d.valor ?? 0),
+        };
       })
       .filter((d) => d.day > 0)
       .map((d) => [d.day, d.total])
   );
+
   const dim = new Date(year, month, 0).getDate();
   return Array.from({ length: dim }, (_, i) => {
     const day = i + 1;
@@ -115,7 +216,11 @@ export default function ReportCitas() {
       const params = from && to ? { from, to } : { month, year };
 
       const r1 = await api.get("/reportes/citas/serie", { ...authHeader, params });
-      const serieNorm = normalizeSerieDaysFull(r1.data?.items ?? r1.data, month, year);
+      const serieNorm = normalizeSerieDaysFull(
+        r1.data?.items ?? r1.data,
+        params.month ?? month,
+        params.year ?? year
+      );
 
       const r2 = await api.get("/reportes/citas/distribucion", { ...authHeader, params });
       let distNorm = normalizeDistribucion(r2.data?.items ?? r2.data);
@@ -140,47 +245,154 @@ export default function ReportCitas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, month, year, token]);
 
-  return (
-    <div className="p-6 min-h-dvh bg-gradient-to-b from-slate-100 to-slate-50">
-      <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-lg font-extrabold tracking-tight text-slate-900">
-          Reportería • Citas
-        </h1>
+  /* Totales (tarjeta) */
+  const totalFromDist = React.useMemo(
+    () => dist.reduce((acc, d) => acc + (Number(d.value) || 0), 0),
+    [dist]
+  );
+  const totalFromSerie = React.useMemo(
+    () => serie.reduce((acc, d) => acc + (Number(d.total) || 0), 0),
+    [serie]
+  );
+  const totalCitas = totalFromDist || totalFromSerie || 0;
 
-        <ReportRangeFilters
-          from={from}
-          to={to}
-          minYear={2021}
-          maxYear={2026}
-          onChange={({ from: f, to: t }) => {
-            setFrom(f);
-            setTo(t);
-            if (f) {
-              const d = new Date(`${f}T00:00:00`);
-              setMonth(d.getMonth() + 1);
-              setYear(d.getFullYear());
-            }
-            if (!f && !t) {
+  return (
+    <div className="p-6 min-h-dvh" style={{ background: THEME.pageBg }}>
+      {/* Encabezado + filtros + total */}
+      <div className="mb-3 flex flex-col lg:flex-row items-start lg:items-center justify-start gap-3">
+        {/* KPI: Total de citas */}
+        <div className="grid grid-cols-1 sm:grid-cols-1 gap-2 w-fit ml-0 mr-auto">
+          <div
+            className={`${THEME.card} flex flex-col items-center justify-center text-center border border-black w-[180px] h-[90px] py-4`}
+          >
+            <div className="p-1 rounded-full bg-sky-50 text-sky-700 border border-sky-700 mb-1">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-600">
+              Total de citas
+            </div>
+            <div className="text-sm font-extrabold text-slate-900 mt-0.5">
+              {formatNumber(totalCitas)}
+            </div>
+          </div>
+        </div>
+
+        {/* Filtros (rango) + limpiar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <ReportRangeFilters
+            from={from}
+            to={to}
+            minYear={2021}
+            maxYear={2026}
+            onChange={({ from: f, to: t }) => {
+              setFrom(f || "");
+              setTo((prevTo) => {
+                const candidate = (t ?? prevTo) || "";
+                if (f && candidate && candidate < f) return f; // clampa TO si quedó inválido
+                return candidate;
+              });
+
+              // Normaliza mes/año para la serie mensual
+              if (f) {
+                const d = new Date(`${f}T00:00:00`);
+                setMonth(d.getMonth() + 1);
+                setYear(d.getFullYear());
+              }
+              if (!f && !t) {
+                const now = new Date();
+                setMonth(now.getMonth() + 1);
+                setYear(now.getFullYear());
+              }
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => {
+              setFrom("");
+              setTo("");
               const now = new Date();
               setMonth(now.getMonth() + 1);
               setYear(now.getFullYear());
-            }
-          }}
-        />
+            }}
+            className="h-12 px-8 rounded-lg text-xs bg-white border border-gray-900"
+            title="Volver al mes actual"
+          >
+            Limpiar filtros
+          </button>
+        </div>
       </div>
 
+      {/* Grid 3 columnas: línea (2 cols) + dona (1 col) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <Box title="Línea de progreso (Citas por día)" className="lg:col-span-2">
-          {loading ? <Empty text="Cargando…" /> : !serie.length ? <Empty /> : (
+        <Box title="Mensual • Citas por día" className="lg:col-span-2">
+          {loading ? (
+            <Empty text="Cargando…" />
+          ) : !serie.length ? (
+            <Empty />
+          ) : (
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={serie} margin={{ top: 8, right: 18, bottom: 8, left: 6 }}>
+                <LineChart
+                  data={serie}
+                  margin={{ top: 12, right: 20, bottom: 10, left: -30 }}
+                >
                   <LineGradientDef />
-                  <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="day"
+                    tick={{ fontSize: 10, fontWeight: "bold", fill: "black" }}
+                    interval={0}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={false}
+                    axisLine={false}
+                    tickLine={false}
+                  />
                   <Tooltip content={<LineTooltip />} />
-                  <Line type="monotone" dataKey="total" stroke="url(#lineGrad)" strokeWidth={3} dot={{ r: 2 }} activeDot={{ r: 5 }}>
-                    <LabelList dataKey="total" position="top" style={{ fontSize: 10, fill: "#334155" }} />
+<Legend
+                    iconType="circle"
+                    iconSize={8}
+                    formatter={(value) => (
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: "bold",
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {value}
+                      </span>
+                    )}
+                    wrapperStyle={{ fontSize: 10 }}
+                  />                  <Line
+                    type="monotone"
+                    dataKey="total"
+                    stroke="url(#lineGrad)"
+                    strokeWidth={1.8}
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 5 }}
+                  >
+                    <LabelList
+                      dataKey="total"
+                      position="top"
+                      formatter={(v) => formatNumber(v)}
+                      style={{ fontSize: 10, fill: "#111" }}
+                    />
                   </Line>
                 </LineChart>
               </ResponsiveContainer>
@@ -188,17 +400,67 @@ export default function ReportCitas() {
           )}
         </Box>
 
-<Box title="Distribución por tipo (Presencial / Virtual)" className="lg:col-span-1">          {loading ? <Empty text="Cargando…" /> : !dist.length ? <Empty /> : (
+        <Box title="Distribución por tipo (Presencial / Virtual)" className="lg:col-span-1">
+          {loading ? (
+            <Empty text="Cargando…" />
+          ) : !dist.length ? (
+            <Empty />
+          ) : (
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={dist} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100} paddingAngle={2} isAnimationActive>
-                    {dist.map((_, i) => <Cell key={i} fill={REPORT_COLORS[i % REPORT_COLORS.length]} />)}
-                    <LabelList dataKey="__pct" formatter={(v) => (v > 0 ? `${v}%` : "")} position="outside" style={{ fontSize: 10, fill: "#334155" }} />
+                <PieChart margin={{ top: 0, right: 8, left: 8, bottom: 40 }}>
+                  <Pie
+                    data={dist}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius="45%"
+                    outerRadius="85%"
+                    paddingAngle={6}
+                    cornerRadius={10}
+                    labelLine={false}
+                    label={({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
+                      const RAD = Math.PI / 180;
+                      const r = innerRadius + (outerRadius - innerRadius) / 2;
+                      const x = cx + r * Math.cos(-midAngle * RAD);
+                      const y = cy + r * Math.sin(-midAngle * RAD);
+                      return (
+                        <text
+                          x={x}
+                          y={y}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize={10}
+                          fill="#111"
+                          fontWeight="bold"
+                        >
+                          {formatNumber(value)}
+                        </text>
+                      );
+                    }}
+                  >
+                    {dist.map((_, i) => (
+                      <Cell key={i} fill={THEME.colors[i % THEME.colors.length]} />
+                    ))}
                   </Pie>
-                  <Legend verticalAlign="bottom" height={40} wrapperStyle={{ fontSize: 12 }} />
                   <Tooltip content={<PieTooltip />} />
-                </PieChart>
+ <Legend
+                    iconType="circle"
+                    iconSize={8}
+                    verticalAlign="bottom"
+                    align="center"
+                    formatter={(value) => (
+                      <span
+                        style={{
+                          fontSize: 10, // letra pequeña
+                          fontWeight: "bold", // en negrita
+                          textTransform: "capitalize", // mayúsculas
+                        }}
+                      >
+                        {value}
+                      </span>
+                    )}
+                    wrapperStyle={{ fontSize: 10 }}
+                  />                </PieChart>
               </ResponsiveContainer>
             </div>
           )}

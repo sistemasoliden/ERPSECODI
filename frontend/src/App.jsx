@@ -10,7 +10,6 @@ import { initTheme } from "./lib/theme";
 
 import WhatsAppHub from "./pages/mensajeria/WhatsAppHub";
 
-
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Cuenta from "./pages/Cuenta";
@@ -40,6 +39,10 @@ import ReportTipificacionSupervisor from "./pages/reporteria/ReportTipificacionS
 import ReportOportunidadesSupervisor from "./pages/reporteria/ReportOportunidadesSupervisor";
 import ReportCitasSupervisor from "./pages/reporteria/ReportCitasSupervisor";
 import OutlookMensajes from "./pages/mensajeria/OutllookMensajes";
+import SupervisarOportunidades from "./pages/SupervisarOportunidades";
+import SupervisarCitas from "./pages/SupervisarCitas";
+import MiTipificacion from "./pages/MiTipificacion";
+import SupervisarTipificaciones from "./pages/SupervisarTipificaciones";
 
 const ROLES_IDS = {
   sistemas: "68a4f22d27e6abe98157a82c",
@@ -54,15 +57,32 @@ const ROLES_IDS = {
 
 // Grupos de permisos para reportería
 const ROLES_REPORTES_PERSONALES = [ROLES_IDS.comercial, ROLES_IDS.gerencia];
-const ROLES_REPORTES_EQUIPO = [ROLES_IDS.supervisorcomercial, ROLES_IDS.gerencia];
+const ROLES_REPORTES_EQUIPO = [
+  ROLES_IDS.supervisorcomercial,
+  ROLES_IDS.gerencia,
+  ROLES_IDS.sistemas
+];
 
 const ProtectedRoute = ({ children, roleIds }) => {
   const user = JSON.parse(localStorage.getItem("user"));
   if (!user) return <Navigate to="/login" replace />;
 
   const userRoleId =
-    typeof user.role === "string" ? user.role : user.role?._id || "";
-  if (roleIds && !roleIds.includes(userRoleId))
+   user.roleId ||
+   (typeof user.role === "string" ? user.role : user.role?._id) ||
+   "";
+   console.log("[ProtectedRoute]", {
+   path: window.location.pathname,
+   userRoleId,
+   roleIds,
+  isAdmin: user?.isAdmin,
+ });
+
+ // Si quieres que isAdmin (Sistemas/Gerencia) pase cualquier guard:
+ if (roleIds && !roleIds.includes(userRoleId) && !user.isAdmin)
+
+
+
     return <Navigate to="/" replace />;
 
   return children;
@@ -97,6 +117,16 @@ export default function App() {
               roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}
             >
               <MiBase />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mis-tipificaciones"
+          element={
+            <ProtectedRoute
+              roleIds={[ROLES_IDS.comercial, ROLES_IDS.supervisorcomercial]}
+            >
+              <MiTipificacion />
             </ProtectedRoute>
           }
         />
@@ -151,12 +181,16 @@ export default function App() {
         <Route
           path="/supervision-ejecutivos"
           element={
-            <ProtectedRoute roleIds={[ROLES_IDS.sistemas]}>
+            <ProtectedRoute
+              roleIds={[
+                ROLES_IDS.sistemas,
+                ROLES_IDS.supervisorcomercial /*, ROLES_IDS.gerencia */,
+              ]}
+            >
               <SupervisionEjecutivos />
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/ventas"
           element={
@@ -265,51 +299,75 @@ export default function App() {
         />
 
         <Route
-  path="/whatsapp"
-  element={
-    <ProtectedRoute roleIds={[ROLES_IDS.comercial]}>
-      <WhatsAppHub />
-    </ProtectedRoute>
-  }
-/>
+          path="/whatsapp"
+          element={
+            <ProtectedRoute roleIds={[ROLES_IDS.comercial]}>
+              <WhatsAppHub />
+            </ProtectedRoute>
+          }
+        />
 
-<Route
-  path="/outlook"
-  element={
-    <ProtectedRoute roleIds={[ROLES_IDS.comercial]}>
-      <OutlookMensajes />
-    </ProtectedRoute>
-  }
-/>
-
+        <Route
+          path="/outlook"
+          element={
+            <ProtectedRoute roleIds={[ROLES_IDS.comercial]}>
+              <OutlookMensajes />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Reportería de EQUIPO (supervisor + gerencia) */}
-       {/* Reportería de EQUIPO (supervisor + gerencia) */}
-<Route
-  path="/reporteria-supervisor/tipificacion"
-  element={
-    <ProtectedRoute roleIds={ROLES_REPORTES_EQUIPO}>
-      <ReportTipificacionSupervisor />
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/reporteria-supervisor/oportunidades"
-  element={
-    <ProtectedRoute roleIds={ROLES_REPORTES_EQUIPO}>
-      <ReportOportunidadesSupervisor />
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/reporteria-supervisor/citas"
-  element={
-    <ProtectedRoute roleIds={ROLES_REPORTES_EQUIPO}>
-      <ReportCitasSupervisor />
-    </ProtectedRoute>
-  }
-/>
+        {/* Reportería de EQUIPO (supervisor + gerencia) */}
+        <Route
+          path="/reporteria-supervisor/tipificacion"
+          element={
+            <ProtectedRoute roleIds={ROLES_REPORTES_EQUIPO}>
+              <ReportTipificacionSupervisor />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reporteria-supervisor/oportunidades"
+          element={
+            <ProtectedRoute roleIds={ROLES_REPORTES_EQUIPO}>
+              <ReportOportunidadesSupervisor />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reporteria-supervisor/citas"
+          element={
+            <ProtectedRoute roleIds={ROLES_REPORTES_EQUIPO}>
+              <ReportCitasSupervisor />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/supervisaroportunidadess"
+          element={
+            <ProtectedRoute roleIds={ROLES_REPORTES_EQUIPO}>
+              <SupervisarOportunidades />
+            </ProtectedRoute>
+          }
+        />
 
+        <Route
+          path="/supervisarcitas"
+          element={
+            <ProtectedRoute roleIds={ROLES_REPORTES_EQUIPO}>
+              <SupervisarCitas />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/supervisartipificaciones"
+          element={
+            <ProtectedRoute roleIds={ROLES_REPORTES_EQUIPO}>
+              <SupervisarTipificaciones />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/HistoricalSales"

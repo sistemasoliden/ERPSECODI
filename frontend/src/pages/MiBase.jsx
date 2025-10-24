@@ -1,10 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import RucCard from "../components/RucCard.jsx";
+import SkeletonRucCard from "../components/SkeletonRucCard.jsx";
 
 export default function MiBase() {
+  const reqIdRef = useRef(0); // <<— id de la última petición emitida
+
   const { token } = useAuth();
   const authHeader = useMemo(
     () => ({ headers: { Authorization: `Bearer ${token}` } }),
@@ -24,7 +27,9 @@ export default function MiBase() {
   /* =========================
    *  DATA LOAD
    * ========================= */
+  // dentro de MiBase.jsx (o donde esté tu componente MiBase)
   const fetchAssigned = async () => {
+    const myReqId = ++reqIdRef.current; // id de esta llamada
     setLoading(true);
     setErr("");
     try {
@@ -32,15 +37,40 @@ export default function MiBase() {
         ...authHeader,
         params: { userId: "me", page, limit, q: q || undefined },
       });
-      const { items, total, page: p, pages } = res.data || {};
-      setItems(items || []);
+
+      // Si llegó una respuesta vieja, la ignoramos
+      if (myReqId !== reqIdRef.current) return;
+
+      const { items: rawItems, total, pages } = res.data || {};
+
+      const itemsWithSF = await Promise.all(
+        (rawItems || []).map(async (it) => {
+          const baseId = it?._id;
+          if (!baseId) return { ...it, __sf: [] };
+          try {
+            const { data } = await api.get(
+              `/data-salesforce/by-base/${baseId}`,
+              authHeader
+            );
+            return { ...it, __sf: Array.isArray(data) ? data : [] };
+          } catch {
+            return { ...it, __sf: [] };
+          }
+        })
+      );
+
+      // De nuevo, por si otra llamada terminó mientras prefetch-eábamos SF
+      if (myReqId !== reqIdRef.current) return;
+
+      setItems(itemsWithSF);
       setTotal(total || 0);
       setPages(pages || 1);
-      if (p) setPage(p);
+      // 👇 ya no tocamos setPage() aquí
     } catch (err) {
+      if (myReqId !== reqIdRef.current) return;
       setErr("No se pudo cargar tu base asignada.");
     } finally {
-      setLoading(false);
+      if (myReqId === reqIdRef.current) setLoading(false);
     }
   };
 
@@ -51,7 +81,9 @@ export default function MiBase() {
         params: { userId: "me" },
       });
       setStats(res.data || null);
-    } catch {err}
+    } catch (e) {
+      // opcional: console.warn("No se pudieron cargar las stats", e);
+    }
   };
 
   useEffect(() => {
@@ -204,12 +236,12 @@ export default function MiBase() {
   };
 
   return (
-<div className="p-6 min-h-dvh bg-[#ebe8e8]">    {/* Toolbar en una sola fila (scroll si no entra) */}
+    <div className="p-6 min-h-dvh bg-[#F2F0F0]">
       {/* Toolbar 100% en una fila (con scroll horizontal si no entra) */}
-      <div className="flex items-center gap-4 overflow-x-auto  py-3 px-2 rounded-md ">
-        {/* stats compactos (mini-cards en línea) */}
+      <div className="flex items-center gap-4 overflow-x-auto py-3 px-2 rounded-md">
+        {/* stats compactos */}
         <div className="flex items-stretch gap-2.5 shrink-0">
-          <div className="min-w-[140px] rounded-lg border border-gray-300 bg-white px-3 py-3 text-center">
+          <div className="min-w-[140px] rounded-lg border border-gray-900 bg-white px-3 py-3 text-center">
             <div className="text-[10px] uppercase text-gray-900 font-semibold mb-1">
               Total asignados
             </div>
@@ -218,7 +250,7 @@ export default function MiBase() {
             </div>
           </div>
 
-          <div className="min-w-[140px] rounded-lg border border-gray-300 bg-white px-3 py-3 text-center">
+          <div className="min-w-[140px] rounded-lg border border-gray-900 bg-white px-3 py-3 text-center">
             <div className="text-[10px] uppercase text-gray-900 font-semibold mb-1">
               Última asignación
             </div>
@@ -235,7 +267,7 @@ export default function MiBase() {
             </div>
           </div>
 
-          <div className="min-w-[140px] rounded-lg border border-gray-300 bg-white px-3 py-3 text-center">
+          <div className="min-w-[140px] rounded-lg border border-gray-900 bg-white px-3 py-3 text-center">
             <div className="text-[10px] uppercase text-gray-900 font-semibold mb-1">
               Tipificadas hoy
             </div>
@@ -244,13 +276,14 @@ export default function MiBase() {
             </div>
           </div>
 
-          <div className="min-w-[140px] rounded-lg border border-gray-300 bg-white px-3 py-3 text-center">
+          <div className="min-w-[140px] rounded-lg border border-gray-900 bg-white px-3 py-3 text-center">
             <div className="text-[10px] uppercase text-gray-900 font-semibold mb-1">
               Restantes
             </div>
             <div className="text-lg font-extrabold leading-tight">{total}</div>
           </div>
         </div>
+
         {/* buscador */}
         <input
           value={q}
@@ -259,16 +292,15 @@ export default function MiBase() {
             setQ(e.target.value);
           }}
           placeholder="Buscar por RUC o Razón Social"
-          className="w-64 md:w-80 border border-gray-300 rounded px-3 py-3 text-[12px]  "
+          className="w-64 md:w-80 border border-gray-900 rounded px-3 py-3 text-[12px]"
         />
 
         {/* acciones */}
         <button
           onClick={() => {
-            setPage(1);
-            fetchAssigned();
+            setPage(1); /* el useEffect hará fetch */
           }}
-          className="px-5 py-4 bg-gray-800 text-white font-bold text-xs rounded "
+          className="px-5 py-4 bg-gray-800 border-gray-900 text-white font-bold text-xs rounded"
         >
           Buscar
         </button>
@@ -278,15 +310,16 @@ export default function MiBase() {
             setQ("");
             setPage(1);
           }}
-          className="px-5 py-4 bg-gray-400 text-gray-800 text-xs font-bold rounded "
+          className="px-5 py-4 bg-gray-400 border-gray-900 text-gray-800 text-xs font-bold rounded"
         >
           Limpiar
         </button>
-        {/* exportar (a la derecha, misma fila) */}
+
+        {/* exportar (derecha) */}
         <button
           onClick={handleExportExcel}
           disabled={loading || !items.length}
-          className="ml-auto px-3 py-2 bg-[#77C7A5]  text-black font-bold text-xs rounded disabled:opacity-50 "
+          className="ml-auto px-3 py-3 border-gray-900 bg-[#77C7A5] text-black font-bold text-xs rounded disabled:opacity-50"
           title="Exportar RUCs, Contactos y Unidades a Excel"
         >
           Exportar Excel
@@ -295,13 +328,25 @@ export default function MiBase() {
 
       {/* Lista de RUCs */}
       {err && <div className="text-red-700 text-sm">{err}</div>}
-      {loading && <div className="text-sm text-gray-600">Cargando…</div>}
+      {/* opcional: retirar el texto "Cargando…" porque ahora mostramos skeletons */}
+      {/* {loading && <div className="text-sm text-gray-600">Cargando…</div>} */}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-4">
-        {items.map((it) => (
-          <RucCard key={it._id} item={it} onTipificar={handleTipificar} />
-        ))}
+        {loading
+          ? Array.from({ length: Math.max(limit, 6) }).map((_, i) => (
+              <SkeletonRucCard key={`sk-${i}`} />
+            ))
+          : items.map((it) => (
+              <RucCard key={it._id} item={it} onTipificar={handleTipificar} />
+            ))}
       </div>
+
+      {/* Empty state cuando no hay resultados y no está cargando */}
+      {!loading && !items.length && !err && (
+        <div className="text-sm text-gray-600 mt-4">
+          No hay resultados para tu búsqueda.
+        </div>
+      )}
 
       {/* Paginación */}
       {pages > 1 && (

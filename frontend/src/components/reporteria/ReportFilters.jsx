@@ -6,9 +6,9 @@ const fmtYmd = (d) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 export default function ReportRangeFilters({
-  from,
-  to,
-  onChange,           // ({ from, to })
+  from = "",
+  to = "",
+  onChange, // ({ from, to })
   minYear = 2021,
   maxYear = 2026,
   className = "",
@@ -17,17 +17,25 @@ export default function ReportRangeFilters({
   const globalMax = fmtYmd(new Date(maxYear, 11, 31));
 
   const handleFrom = (v) => {
-    if (!v) return;
-    // Mantén 'to' como está, solo corrige si queda antes de 'from'
-    const next = { from: v, to: to && to >= v ? to : v };
-    onChange(next);
+    // Permitir limpiar
+    if (!v) {
+      onChange?.({ from: "", to });
+      return;
+    }
+    // No autollenes TO; solo corrige si TO < FROM
+    const nextTo = to && to < v ? v : to;
+    onChange?.({ from: v, to: nextTo || "" });
   };
 
   const handleTo = (v) => {
-    if (!v) return;
-    // Mantén 'from' como está, solo corrige si queda después de 'to'
-    const next = { from: from && from <= v ? from : v, to: v };
-    onChange(next);
+    // Permitir limpiar
+    if (!v) {
+      onChange?.({ from, to: "" });
+      return;
+    }
+    // Mantén FROM; si quedó > TO, clampa FROM a TO
+    const nextFrom = from && from > v ? v : from;
+    onChange?.({ from: nextFrom || "", to: v });
   };
 
   return (
@@ -36,19 +44,19 @@ export default function ReportRangeFilters({
         type="date"
         value={from || ""}
         min={globalMin}
-        max={globalMax}
+        max={to || globalMax} // evita seleccionar FROM posterior a TO
         onChange={(e) => handleFrom(e.target.value)}
-        className="border rounded px-3 py-3 text-[12px] bg-white"
+        className="h-12 rounded-lg text-xs bg-white border border-gray-900 px-3"
         title="Desde"
       />
       <span className="text-xs text-gray-500">—</span>
       <input
         type="date"
         value={to || ""}
-        min={globalMin}
+        min={from || globalMin} // evita seleccionar TO anterior a FROM
         max={globalMax}
         onChange={(e) => handleTo(e.target.value)}
-        className="border rounded px-3 py-3 text-[12px] bg-white"
+        className="h-12 rounded-lg text-xs bg-white border border-gray-900 px-3"
         title="Hasta"
       />
     </div>

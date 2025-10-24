@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { tipificarLatest } from "../controllers/assignmentsController.js";
+import { tipificarLatest, listTipificadas, listTipificadasSupervisor } from "../controllers/assignmentsController.js";
 import { verifyToken, requireRoles, ROLES_IDS } from "../middlewares/auth.js"; // ← tu archivo
 
 const router = Router();
@@ -16,5 +16,9 @@ router.post(
   ]),
   tipificarLatest
 );
+
+router.get("/tipificaciones", verifyToken, listTipificadas);
+
+router.get("/tipificaciones/supervisor", verifyToken, listTipificadasSupervisor);
 
 export default router;

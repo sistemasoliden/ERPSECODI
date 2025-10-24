@@ -6,7 +6,10 @@ import {
   listMyOpportunities,
   updateEstado,
   listTipos,             // ← tipos de etapa (pipeline simple)
-  updateCamposBasicos  // ← NUEVO: actualiza monto/cantidad/tipo/producto/notas
+  updateCamposBasicos , // ← NUEVO: actualiza monto/cantidad/tipo/producto/notas
+reportPorTipoVentaResumen,
+listOpportunitiesSupervisor,
+
 } from "../controllers/opportunityController.js";
 
 const router = Router();
@@ -23,5 +26,15 @@ router.patch("/:id/estado", verifyToken, updateEstado);
 
 // Tipos de ETAPA (para el StagePath, si los necesitas en el front)
 router.get("/tipos/all", verifyToken, listTipos);
+// routes/opportunityRoutes.js
+router.get(
+  "/reportes/por-tipo-venta-resumen",
+  verifyToken,
+  reportPorTipoVentaResumen
+);
+
+router.get("/supervisorop", verifyToken, listOpportunitiesSupervisor);
+
+
 
 export default router;

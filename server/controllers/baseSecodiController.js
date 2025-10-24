@@ -6,42 +6,144 @@ import AssignmentLog from "../models/AssignmentLog.js";
 import Assignment from "../models/Assignment.js";
 import Opportunity from "../models/Opportunity.js";
 import User from "../models/User.js";
+import EquipoSecodi from "../models/EquipoSecodi.js";
 
+/* -------------------- Utils básicos -------------------- */
 const onlyDigits = (v) => String(v || "").replace(/\D/g, "");
-const keyOf = (d) => d?.rucStr || onlyDigits(d?.ruc);
-
 const isOID = (v) => mongoose.isValidObjectId(v);
 const isRuc11 = (v) => /^\d{11}$/.test(String(v));
 
-// arriba del archivo (ya tienes import BaseSecodi)
 const findBaseByRuc = (rucPlain) => {
   return BaseSecodi.findOne(
-    {
-      $or: [{ rucStr: rucPlain }, { ruc: rucPlain }, { ruc: Number(rucPlain) }],
-    },
+    { $or: [{ rucStr: rucPlain }, { ruc: rucPlain }, { ruc: Number(rucPlain) }] },
     { _id: 1 }
   ).lean();
 };
 
-const DEFAULT_ESTADO_ID = "68b859269d14cf7b7e510848"; // Propuesta identificada
-const TIPO_MAP = {
-  "68b859269d14cf7b7e510848": "Propuesta identificada",
-  "68b859269d14cf7b7e510849": "Propuesta calificada",
-  "68b859269d14cf7b7e51084a": "Propuesta entregada",
-  "68b859269d14cf7b7e51084b": "Negociación",
-  "68b859269d14cf7b7e51084c": "Negociación aprobada",
-  "68b859269d14cf7b7e51084d": "Propuesta cerrada ganada",
-  "68b859269d14cf7b7e51084e": "Propuesta cerrada perdida",
-};
-// helper: normaliza payload
 function parseRucs(raw = []) {
   return Array.from(
-    new Set(
-      (raw || []).map((r) => onlyDigits(r)).filter((r) => /^\d{11}$/.test(r))
-    )
+    new Set((raw || []).map((r) => onlyDigits(r)).filter((r) => /^\d{11}$/.test(r)))
   );
 }
-/** GET /api/basesecodi/ruc/:ruc  -> devuelve todo el doc (sin _id/__v) */
+
+/* -------------------- Roles y scope -------------------- */
+const ROLES = {
+  comercial: "68a4f22d27e6abe98157a831",
+  administracion: "68a4f22d27e6abe98157a82d",
+  gerencia: "68a4f22d27e6abe98157a82f",
+  sistemas: "68a4f22d27e6abe98157a82c",
+  rrhh: "68a4f22d27e6abe98157a82e",
+  supervisorcomercial: "68a4f22d27e6abe98157a832",
+  postventa: "68acded5b9da48dd36769c47",
+  capacitador: "68bb4fe47bddfef9d9c80239",
+};
+
+function roleOf(u) {
+  return String(u?.role?._id ?? u?.role ?? u?.roleId ?? u?.role_id ?? "");
+}
+
+function isOneOf(u, roleIds) {
+  const r = roleOf(u);
+  return roleIds.map(String).includes(r);
+}
+function commercialRoleMatch() {
+  return {
+    $or: [
+      { role: new mongoose.Types.ObjectId(ROLES.comercial) },
+      { role: ROLES.comercial },
+    ],
+  };
+}
+const asObjectIdOrString = (v) =>
+  mongoose.isValidObjectId(v) ? new mongoose.Types.ObjectId(String(v)) : String(v);
+
+/**
+ * Devuelve el filtro de usuarios COMERCIALES visibles para el requester
+ * - sistemas/gerencia: todos los comerciales activos
+ * - supervisor: SOLO los comerciales cuyo "equipo" pertenezca a un EquipoSecodi con supervisor == req.user._id
+ * - otros: nada
+ */
+async function buildUsersScopeMatch(req, extra = {}) {
+  const baseActive = { isActive: { $ne: false }, ...extra };
+  const roleIsCommercial = commercialRoleMatch();
+
+  // Sistemas y Gerencia -> TODOS los comerciales
+  if (isOneOf(req.user, [ROLES.sistemas, ROLES.gerencia])) {
+    return { ...baseActive, $and: [roleIsCommercial] };
+  }
+
+  // Supervisor Comercial -> SOLO su equipo (con fallbacks)
+  if (isOneOf(req.user, [ROLES.supervisorcomercial])) {
+    const meStr = String(req.user._id);
+    let meObj = null;
+    try { meObj = new mongoose.Types.ObjectId(meStr); } catch {}
+
+    // 1) Intentar por equipos en EquipoSecodi (supervisor como ObjectId o string)
+    let equipoDocs = [];
+    try {
+      equipoDocs = await EquipoSecodi.find({
+        $or: [
+          ...(meObj ? [{ supervisor: meObj }] : []),
+          { supervisor: meStr },
+        ],
+      }).select("_id name").lean();
+    } catch (e) {
+      console.warn("[scope] error consultando EquipoSecodi:", e?.message);
+    }
+
+    if (equipoDocs.length > 0) {
+      const equipoIds = equipoDocs.map(e => e._id);
+      console.log("[scope] equipos del supervisor:", equipoDocs.map(e => ({ id: e._id, name: e.name })));
+      return {
+        ...baseActive,
+        $and: [ roleIsCommercial, { equipo: { $in: equipoIds } } ],
+      };
+    }
+
+    // 2) Fallback por campos jerárquicos en User
+    const anyOfMine = {
+      $or: [
+        ...(meObj ? [
+          { supervisorId: meObj },
+          { reportsTo: meObj },
+          { managerId: meObj },
+          { bossId: meObj },
+          { teamLeads: meObj },
+          { supervisors: meObj },
+        ] : []),
+        { supervisorId: meStr },
+        { reportsTo: meStr },
+        { managerId: meStr },
+        { bossId: meStr },
+        { teamLeads: meStr },
+        { supervisors: meStr },
+      ],
+    };
+
+    try {
+      const cnt = await User.countDocuments({ ...baseActive, $and: [roleIsCommercial, anyOfMine] });
+      if (cnt > 0) {
+        console.log("[scope] usando fallback jerárquico en User; miembros:", cnt);
+        return { ...baseActive, $and: [ roleIsCommercial, anyOfMine ] };
+      }
+    } catch (e) {
+      console.warn("[scope] error en fallback jerárquico:", e?.message);
+    }
+
+    // 3) Último fallback (temporal): mostrar TODOS los comerciales
+    console.warn("[scope] supervisor SIN equipos ni jerarquía -> usando fallback TODOS los comerciales (temporal)");
+    return { ...baseActive, $and: [ roleIsCommercial ] };
+
+    // ⛔️ Si prefieres vaciar en vez de mostrar todos, usa:
+    // return { _id: { $exists: false } };
+  }
+
+  // Otros roles -> nada
+  return { _id: { $exists: false } };
+}
+
+
+/* -------------------- Endpoints -------------------- */
 export async function getByRuc(req, res) {
   try {
     const norm = onlyDigits(req.params.ruc || "");
@@ -61,7 +163,6 @@ export async function getByRuc(req, res) {
   }
 }
 
-/** GET /api/basesecodi/search?q= */
 export async function search(req, res) {
   try {
     const q = String(req.query.q || "").trim();
@@ -94,7 +195,7 @@ export async function search(req, res) {
   }
 }
 
-// controllers/baseS
+/* ------------ Asignaciones ------------ */
 export async function assignRucs(req, res) {
   const {
     rucs = [],
@@ -113,9 +214,7 @@ export async function assignRucs(req, res) {
 
   const cleanRucs = parseRucs(rucs);
   if (!cleanRucs.length) {
-    return res
-      .status(400)
-      .json({ message: "Envía RUCs válidos (11 dígitos)." });
+    return res.status(400).json({ message: "Envía RUCs válidos (11 dígitos)." });
   }
 
   const result = {
@@ -130,14 +229,12 @@ export async function assignRucs(req, res) {
   const toUserOid = new mongoose.Types.ObjectId(userIdDestino);
 
   for (const raw of cleanRucs) {
-    const rucPlain = String(raw); // ya viene limpio (11 dígitos)
+    const rucPlain = String(raw);
 
     try {
-      // 1) Resolver rucId (ObjectId) a partir del RUC (BaseSecodi)
       let rucId = null;
 
       if (isOID(raw)) {
-        // por si te envían directamente el _id de BaseSecodi (raro)
         rucId = raw;
       } else if (isRuc11(rucPlain)) {
         const base = await findBaseByRuc(rucPlain);
@@ -151,23 +248,20 @@ export async function assignRucs(req, res) {
         continue;
       }
 
-      // 2) Último assignment por rucId
       const prev = await Assignment.findOne({ rucId }).sort({
         createdAt: -1,
         _id: -1,
       });
 
-      // 3) Si no existe, crear uno nuevo
       if (!prev) {
         await Assignment.create({
           rucId,
-          ruc: rucPlain, // denormalizado (útil en reportes)
-          toUserId: toUserOid, // siempre ObjectId
+          ruc: rucPlain,
+          toUserId: toUserOid,
           assignedBy: asignadorId,
           assignedAt: new Date(),
           releasedAt: null,
           tipificationNote: note || "",
-          // tipificación vacía por defecto
           tipificationId: null,
           subtipificationId: null,
           tipifiedAt: null,
@@ -179,11 +273,10 @@ export async function assignRucs(req, res) {
         continue;
       }
 
-      // 4) Reasignar en el MISMO documento
       const set = {
         rucId,
         ruc: rucPlain,
-        toUserId: toUserOid, // forzamos ObjectId
+        toUserId: toUserOid,
         assignedBy: asignadorId,
         assignedAt: new Date(),
         releasedAt: null,
@@ -194,7 +287,6 @@ export async function assignRucs(req, res) {
       );
 
       if (sentNewTipif) {
-        // Si envías nueva tipificación en este mismo POST, se sobreescribe
         set.tipificationId = req.body.tipificationId ?? null;
         set.subtipificationId = req.body.subtipificationId ?? null;
         set.tipificationNote =
@@ -202,7 +294,6 @@ export async function assignRucs(req, res) {
         set.tipifiedAt = new Date();
         set.tipifiedBy = asignadorId;
       } else if (overwrite && ignoreTipificacion) {
-        // Reabrir SIEMPRE (aunque sea el mismo owner)
         set.tipificationId = undefined;
         set.subtipificationId = undefined;
         set.tipificationNote = "";
@@ -214,17 +305,6 @@ export async function assignRucs(req, res) {
       result.matched += 1;
       result.modified += 1;
       result.overwritten += 1;
-
-      // (opcional) escribir log de reasignación
-      // try {
-      //   await AssignmentLog.create({
-      //     rucId,
-      //     prevOwner: prev.toUserId,
-      //     newOwner: toUserOid,
-      //     assignedBy: asignadorId,
-      //     note: note || "",
-      //   });
-      // } catch {}
     } catch (err) {
       console.error("[assignRucs] error con RUC:", rucPlain, err);
       result.conflicted.push(rucPlain);
@@ -234,11 +314,28 @@ export async function assignRucs(req, res) {
   return res.json(result);
 }
 
+/* ------------ Listar base no tipificada de un usuario ------------ */
 // GET /api/basesecodi/assigned?userId=me&page=&limit=&q=
-// controllers/baseSecodiController.js
 export async function listAssigned(req, res) {
   try {
     const { userId = "me", page = 1, limit = 24, q = "" } = req.query;
+
+    // Supervisores solo pueden ver su equipo
+    const requesterIsSupervisor = isOneOf(req.user, [ROLES.supervisorcomercial]);
+    if (requesterIsSupervisor && userId !== "me") {
+      const isSelf = String(userId) === String(req.user._id);
+      if (!isSelf) {
+        const scope = await buildUsersScopeMatch(req);
+        const target = await User.findOne({ _id: userId, ...scope })
+          .select("_id")
+          .lean();
+        if (!target) {
+          return res
+            .status(403)
+            .json({ message: "No autorizado para ver este usuario." });
+        }
+      }
+    }
 
     const oidStr = String(userId === "me" ? req.user._id : userId);
     const oidObj = mongoose.isValidObjectId(oidStr)
@@ -246,31 +343,20 @@ export async function listAssigned(req, res) {
       : null;
 
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
-    const nameRx = q
-      ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")
-      : null;
+    const nameRx = q ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null;
 
     const pipeline = [
       { $sort: { rucId: 1, assignedAt: -1, createdAt: -1, _id: -1 } },
       { $group: { _id: "$rucId", doc: { $first: "$$ROOT" } } },
       { $replaceRoot: { newRoot: "$doc" } },
 
-      // 👇 match por ObjectId y por string
       {
         $match: {
-          $or: [
-            ...(oidObj ? [{ toUserId: oidObj }] : []),
-            { toUserId: oidStr },
-          ],
+          $or: [...(oidObj ? [{ toUserId: oidObj }] : []), { toUserId: oidStr }],
         },
       },
 
-      // Solo NO tipificados
-      {
-        $match: {
-          $or: [{ tipifiedAt: { $exists: false } }, { tipifiedAt: null }],
-        },
-      },
+      { $match: { $or: [{ tipifiedAt: { $exists: false } }, { tipifiedAt: null }] } },
 
       {
         $lookup: {
@@ -290,33 +376,30 @@ export async function listAssigned(req, res) {
                   { "r.razonSocial": { $regex: nameRx } },
                   { "r.razon_social": { $regex: nameRx } },
                   { "r.rucStr": { $regex: q } },
-                  { "r.ruc": { $regex: q } },
+                  {
+                    $expr: { $regexMatch: { input: { $toString: "$r.ruc" }, regex: q } },
+                  },
                 ],
               },
             },
           ]
         : []),
 
-      {
-        $facet: {
-          items: [{ $skip: skip }, { $limit: parseInt(limit, 10) }],
-          total: [{ $count: "n" }],
-        },
-      },
+      { $facet: { items: [{ $skip: skip }, { $limit: parseInt(limit, 10) }], total: [{ $count: "n" }] } },
     ];
 
     const agg = await Assignment.aggregate(pipeline);
-    const itemsAgg = agg[0]?.items ?? [];
-    const total = agg[0]?.total?.[0]?.n ?? 0;
+    const itemsAgg = agg?.[0]?.items ?? [];
+    const total = agg?.[0]?.total?.[0]?.n ?? 0;
 
     const items = itemsAgg.map((a) => ({
       ...a.r,
-      assignedAt: a.assignedAt ?? a.createdAt, // 👈 usar assignedAt
+      assignedAt: a.assignedAt ?? a.createdAt,
       assignedBy: a.assignedBy,
       note: a.note,
     }));
 
-    res.json({
+    return res.json({
       items,
       total,
       page: parseInt(page, 10),
@@ -324,11 +407,11 @@ export async function listAssigned(req, res) {
     });
   } catch (err) {
     console.error("[listAssigned]", err);
-    res.status(500).json({ message: "Error cargando base asignada" });
+    return res.status(500).json({ message: "Error cargando base asignada" });
   }
 }
 
-// controllers/baseSecodiController.js (getStats)
+/* ------------ KPIs personales (Mi Base) ------------ */
 export async function getStats(req, res) {
   try {
     const userId = req.query.userId === "me" ? req.user?._id : req.query.userId;
@@ -351,24 +434,16 @@ export async function getStats(req, res) {
       { $group: { _id: "$rucId", doc: { $first: "$$ROOT" } } },
       { $replaceRoot: { newRoot: "$doc" } },
       { $match: matchOwner },
-
       {
         $group: {
           _id: null,
           totalAssigned: { $sum: 1 },
-      lastAssignedAt: { $max: { $ifNull: ["$assignedAt", "$createdAt"] } },
-          completedTotal: {
-            $sum: { $cond: [{ $ne: ["$tipifiedAt", null] }, 1, 0] },
-          },
+          lastAssignedAt: { $max: { $ifNull: ["$assignedAt", "$createdAt"] } },
+          completedTotal: { $sum: { $cond: [{ $ne: ["$tipifiedAt", null] }, 1, 0] } },
           completedToday: {
             $sum: {
               $cond: [
-                {
-                  $and: [
-                    { $ne: ["$tipifiedAt", null] },
-                    { $gte: ["$tipifiedAt", startOfToday] },
-                  ],
-                },
+                { $and: [{ $ne: ["$tipifiedAt", null] }, { $gte: ["$tipifiedAt", startOfToday] }] },
                 1,
                 0,
               ],
@@ -376,10 +451,9 @@ export async function getStats(req, res) {
           },
         },
       },
-
       {
         $project: {
-          total: { $subtract: ["$totalAssigned", "$completedTotal"] }, // Restantes
+          total: { $subtract: ["$totalAssigned", "$completedTotal"] },
           totalAssigned: 1,
           lastAssignedAt: 1,
           completedToday: 1,
@@ -389,7 +463,7 @@ export async function getStats(req, res) {
 
     const s = (await Assignment.aggregate(pipeline))[0] || {};
     res.json({
-      total: s.total || 0, // Restantes
+      total: s.total || 0,
       totalAssigned: s.totalAssigned || 0,
       lastAssignedAt: s.lastAssignedAt || null,
       completedToday: s.completedToday || 0,
@@ -400,7 +474,7 @@ export async function getStats(req, res) {
   }
 }
 
-// GET /api/basesecodi/stats
+/* ------------ (legacy) KPIs desde BaseSecodi ------------ */
 export async function assignedStats(req, res) {
   try {
     const { userId = "me" } = req.query;
@@ -435,12 +509,10 @@ export async function assignedStats(req, res) {
   }
 }
 
+/* ------------ Batches & Logs ------------ */
 export async function listBatches(req, res) {
   try {
-    const limit = Math.min(
-      200,
-      Math.max(1, parseInt(req.query.limit || "50", 10))
-    );
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || "50", 10)));
     const skip = Math.max(0, parseInt(req.query.skip || "0", 10));
 
     const batches = await AssignmentBatch.find({})
@@ -466,7 +538,7 @@ export async function getBatchLogs(req, res) {
     }
 
     const logs = await AssignmentLog.find({ batchId: id })
-      .sort({ createdAt: -1 }) // <-- antes decía { at: -1 }
+      .sort({ createdAt: -1 })
       .populate("newOwner", "name email")
       .populate("prevOwner", "name email")
       .populate("assignedBy", "name email")
@@ -479,23 +551,17 @@ export async function getBatchLogs(req, res) {
   }
 }
 
+/* ------------ Buscar por RUCs ------------ */
 export async function findByRucs(req, res) {
   try {
     const rucs = parseRucs(req.body?.rucs || []);
     if (!rucs.length)
-      return res
-        .status(400)
-        .json({ message: "Envía RUCs válidos (11 dígitos)." });
+      return res.status(400).json({ message: "Envía RUCs válidos (11 dígitos)." });
 
     const rucsNum = rucs.map((r) => Number(r));
 
-    // Trae docs por rucStr | ruc string | ruc number
     const docs = await BaseSecodi.find({
-      $or: [
-        { rucStr: { $in: rucs } },
-        { ruc: { $in: rucs } },
-        { ruc: { $in: rucsNum } },
-      ],
+      $or: [{ rucStr: { $in: rucs } }, { ruc: { $in: rucs } }, { ruc: { $in: rucsNum } }],
     })
       .select("_id ruc rucStr razonSocial razon_social")
       .lean();
@@ -504,7 +570,6 @@ export async function findByRucs(req, res) {
     const foundSet = new Set(docs.map(key));
     const missing = rucs.filter((r) => !foundSet.has(r));
 
-    // Conflictos reales = ya tienen último owner (quien sea)
     const docIds = docs.map((d) => d._id);
     const lastOwners = await Assignment.aggregate([
       { $match: { rucId: { $in: docIds } } },
@@ -527,24 +592,19 @@ export async function findByRucs(req, res) {
   }
 }
 
-// controllers/baseSecodiController.js
-// controllers/baseSecodiController.js
-// controllers/baseSecodiController.js
+/* ------------ Marcar tipificada ------------ */
 export const markTipificada = async (req, res) => {
   try {
     const userId = String(req.user?._id || req.user?.id);
     const rucRaw = String(req.body?.ruc || "");
     const ruc = rucRaw.replace(/\D/g, "");
-    if (ruc.length !== 11)
-      return res.status(400).json({ error: "RUC inválido" });
+    if (ruc.length !== 11) return res.status(400).json({ error: "RUC inválido" });
 
-    // Buscar el doc en BaseSecodi por rucStr o ruc (string/number)
     const base = await BaseSecodi.findOne({
       $or: [{ rucStr: ruc }, { ruc }, { ruc: Number(ruc) }],
     }).select("_id");
     if (!base) return res.status(404).json({ error: "RUC no encontrado" });
 
-    // Verificar que el último assignment pertenece al usuario
     const last = await Assignment.findOne({ rucId: base._id })
       .sort({ createdAt: -1, _id: -1 })
       .select("toUserId")
@@ -554,10 +614,25 @@ export const markTipificada = async (req, res) => {
       return res.status(403).json({ error: "Este RUC no está asignado a ti" });
     }
 
-    // Marcar como completado en la base
+    const now = new Date();
+
     await BaseSecodi.updateOne(
       { _id: base._id },
-      { $set: { assignedStatus: "completed", tipificadaAt: new Date() } }
+      { $set: { assignedStatus: "completed", tipificadaAt: now } }
+    );
+
+    await Assignment.findOneAndUpdate(
+      { rucId: base._id },
+      {
+        $set: {
+          tipificationId: req.body?.tipificationId ?? null,
+          subtipificationId: req.body?.subtipificationId ?? null,
+          tipificationNote: typeof req.body?.note === "string" ? req.body.note : "",
+          tipifiedAt: now,
+          tipifiedBy: userId,
+        },
+      },
+      { sort: { createdAt: -1, _id: -1 } }
     );
 
     return res.json({ ok: true });
@@ -567,122 +642,179 @@ export const markTipificada = async (req, res) => {
   }
 };
 
-
-
+/* ------------ Dashboard de Ejecutivos ------------ */
 // GET /api/basesecodi/exec-dashboard?search=&page=1&limit=20&sort=restantes:desc
 export async function execDashboard(req, res) {
+  console.log("[execDashboard] user:", {
+    id: String(req.user?._id),
+    role_raw: req.user?.role,
+    role_id: req.user?.role?._id ?? req.user?.role ?? req.user?.roleId ?? req.user?.role_id,
+  });
+
   try {
-    const page  = Math.max(1, parseInt(req.query.page || "1", 10));
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || "20", 10)));
-    const skip  = (page - 1) * limit;
+    const page = Math.max(1, parseInt(req.query.page || "1", 10));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || "12", 10)));
+    const skip = (page - 1) * limit;
     const search = String(req.query.search || "").trim();
     const sortParam = String(req.query.sort || "restantes:desc");
     const [sortField, sortDir] = sortParam.split(":");
-    const sort = { [sortField || "restantes"]: (sortDir === "asc" ? 1 : -1) };
+    const dir = sortDir === "asc" ? 1 : -1;
 
-    // Filtro opcional por role comercial (si lo deseas)
-    // const COMMERCIAL_ROLE_ID = "68a4f22d27e6abe98157a831";
+  const scopeMatch = await buildUsersScopeMatch(req);
+if (scopeMatch._id && scopeMatch._id.$exists === false) {
+  console.warn("[execDashboard] scope vacío para este usuario/rol");
+  return res.json({ items: [], total: 0, page, pages: 1 });
+}
 
-    // Query de usuarios a considerar (activos)
     const usersMatch = {
-      // "role": new mongoose.Types.ObjectId(COMMERCIAL_ROLE_ID),
-      isActive: { $ne: false },
+      ...scopeMatch,
       ...(search
-        ? { $or: [
-              { name:  { $regex: new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") } },
+        ? {
+            $or: [
+              { name: { $regex: new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") } },
               { email: { $regex: new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") } },
-            ] }
-        : {})
+            ],
+          }
+        : {}),
     };
 
-    // Traemos usuarios una vez para poder mostrar aunque no tengan asignaciones
-    const users = await User.find(usersMatch).select("_id name email").lean();
-    const userIds = users.map(u => u._id);
+    const countCandidates = await User.countDocuments(usersMatch);
+    console.log("[execDashboard] usersMatch:", JSON.stringify(usersMatch));
+    console.log("[execDashboard] candidates:", countCandidates);
 
-    // Agregación sobre Assignment: último assignment por ruc y agrupado por toUserId
-    const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+    const allUsers = await User.find(usersMatch)
+      .select("_id name email equipo")
+      .sort({ name: 1 })
+      .lean();
 
-    const pipeline = [
-      // Solo assignments cuyo dueño esté en la lista
-      { $match: { toUserId: { $in: userIds } } },
+    if (!allUsers.length) {
+      return res.json({ items: [], total: 0, page, pages: 1 });
+    }
 
-      // Tomar el último por RUC
+    // toUserId puede estar guardado como ObjectId o string
+    const idsObj = allUsers
+      .map((u) => {
+        try {
+          return new mongoose.Types.ObjectId(String(u._id));
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    const idsStr = allUsers.map((u) => String(u._id));
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const kpiAgg = await Assignment.aggregate([
+      { $match: { $or: [{ toUserId: { $in: idsObj } }, { toUserId: { $in: idsStr } }] } },
       { $sort: { rucId: 1, createdAt: -1, _id: -1 } },
       { $group: { _id: "$rucId", last: { $first: "$$ROOT" } } },
       { $replaceRoot: { newRoot: "$last" } },
-
-      // Unir con BaseSecodi para sumar líneas (opcional)
-      { $lookup: { from: "basesecodi", localField: "rucId", foreignField: "_id", as: "base" } },
+      {
+        $lookup: {
+          from: "basesecodi",
+          localField: "rucId",
+          foreignField: "_id",
+          as: "base",
+        },
+      },
       { $unwind: { path: "$base", preserveNullAndEmptyArrays: true } },
-
-      // Agrupar por ejecutivo
-      { $group: {
+      {
+        $group: {
           _id: "$toUserId",
           totalAsignados: { $sum: 1 },
-          tipificados:    { $sum: { $cond: [{ $ne: ["$tipifiedAt", null] }, 1, 0] } },
-          tipificadosHoy: { $sum: { $cond: [
-                                  { $and: [
-                                    { $ne: ["$tipifiedAt", null] },
-                                    { $gte: ["$tipifiedAt", startOfToday] }
-                                  ]},
-                                  1, 0
-                                ] } },
-          ultimaAsignacion: { $max: "$createdAt" },
-          sumTotalLines:    { $sum: { $ifNull: ["$base.totalLines", 0] } },
-        }
+          tipificados: { $sum: { $cond: [{ $ne: ["$tipifiedAt", null] }, 1, 0] } },
+          tipificadosHoy: {
+            $sum: {
+              $cond: [
+                { $and: [{ $ne: ["$tipifiedAt", null] }, { $gte: ["$tipifiedAt", startOfToday] }] },
+                1,
+                0,
+              ],
+            },
+          },
+          ultimaAsignacion: { $max: { $ifNull: ["$assignedAt", "$createdAt"] } },
+          sumTotalLines: { $sum: { $ifNull: ["$base.totalLines", 0] } },
+        },
       },
+    ]);
 
-      // Calcular restantes
-      { $project: {
-          _id: 1,
-          totalAsignados: 1,
-          tipificados: 1,
-          restantes: { $subtract: ["$totalAsignados", "$tipificados"] },
-          tipificadosHoy: 1,
-          ultimaAsignacion: 1,
-          sumTotalLines: 1,
-        }
-      },
+    const kpiMap = new Map(kpiAgg.map((x) => [String(x._id), x]));
 
-      // Orden
-      { $sort: sort },
-
-      // Paginación
-      { $facet: {
-          items: [{ $skip: skip }, { $limit: limit }],
-          total: [{ $count: "n" }]
-      }}
-    ];
-
-    const agg = await Assignment.aggregate(pipeline);
-    const itemsAgg = agg[0]?.items || [];
-    const total = agg[0]?.total?.[0]?.n || 0;
-
-    // Mezclamos con los usuarios para nombre/email
-    const infoById = new Map(users.map(u => [String(u._id), u]));
-    const items = itemsAgg.map(x => {
-      const u = infoById.get(String(x._id)) || {};
+    const blended = allUsers.map((u) => {
+      const kpi = kpiMap.get(String(u._id)) || {};
+      const totalAsignados = kpi.totalAsignados || 0;
+      const tipificados = kpi.tipificados || 0;
       return {
-        userId: String(x._id),
+        userId: String(u._id),
         name: u.name || "(sin nombre)",
         email: u.email || "",
-        totalAsignados: x.totalAsignados || 0,
-        tipificados: x.tipificados || 0,
-        restantes: x.restantes || 0,
-        tipificadosHoy: x.tipificadosHoy || 0,
-        ultimaAsignacion: x.ultimaAsignacion || null,
-        sumTotalLines: x.sumTotalLines || 0,
+        totalAsignados,
+        tipificados,
+        restantes: totalAsignados - tipificados,
+        tipificadosHoy: kpi.tipificadosHoy || 0,
+        ultimaAsignacion: kpi.ultimaAsignacion || null,
+        sumTotalLines: kpi.sumTotalLines || 0,
       };
     });
 
-    return res.json({
-      items,
-      total,
-      page,
-      pages: Math.max(1, Math.ceil(total / limit)),
+    blended.sort((a, b) => {
+      const av = a[sortField] ?? 0;
+      const bv = b[sortField] ?? 0;
+      return dir === 1 ? av - bv : bv - av;
     });
+
+    const total = blended.length;
+    const items = blended.slice(skip, skip + limit);
+    const pages = Math.max(1, Math.ceil(total / limit));
+
+    // Debug opcional
+    if (roleOf(req.user) === ROLES.supervisorcomercial) {
+      try {
+        const me = new mongoose.Types.ObjectId(String(req.user._id));
+        const equipos = await EquipoSecodi.find({ supervisor: me }).select("_id name").lean();
+        console.log("[execDashboard] equipos del supervisor:", equipos);
+      } catch (e) {
+        console.warn("[execDashboard] no se pudo listar equipos del supervisor:", e?.message);
+      }
+    }
+
+    return res.json({ items, total, page, pages });
   } catch (err) {
     console.error("[execDashboard]", err);
-    res.status(500).json({ message: "Error obteniendo dashboard de ejecutivos" });
+    return res.status(500).json({ message: "Error obteniendo dashboard de ejecutivos" });
+  }
+}
+
+/* ------------ Reasignación individual ------------ */
+export async function reassignOne(req, res) {
+  try {
+    const asignadorId = req.user?._id;
+    if (!asignadorId) return res.status(401).json({ message: "No autenticado" });
+
+    const { ruc = "", toUserId = "", overwrite = true, ignoreTipificacion = true, note = "" } =
+      req.body || {};
+
+    if (!mongoose.isValidObjectId(toUserId)) {
+      return res.status(400).json({ message: "userId inválido" });
+    }
+
+    const dest = await User.findById(toUserId).select("_id isActive role").lean();
+    if (
+      !dest ||
+      dest.isActive === false ||
+      String(dest.role?._id ?? dest.role) !== ROLES.comercial
+    ) {
+      return res
+        .status(400)
+        .json({ message: "El destino debe ser un usuario Comercial activo." });
+    }
+
+    req.body = { rucs: [String(ruc)], userId: toUserId, overwrite, ignoreTipificacion, note };
+    return await assignRucs(req, res);
+  } catch (err) {
+    console.error("[reassignOne]", err);
+    return res.status(500).json({ message: "Error al reasignar" });
   }
 }

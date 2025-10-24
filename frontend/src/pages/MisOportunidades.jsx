@@ -1,8 +1,10 @@
 // src/pages/MisOportunidades.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import OpportunityModal from "../components/OpportunityModal.jsx";
+import ReportRangeFilters from "../components/reporteria/ReportFilters";
 
 /* Debounce simple para el buscador */
 function useDebouncedValue(value, delay = 450) {
@@ -14,19 +16,43 @@ function useDebouncedValue(value, delay = 450) {
   return debounced;
 }
 
+/* Helpers de fecha y nombre de archivo */
+function getDateStamp() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const HH = String(now.getHours()).padStart(2, "0");
+  const MM = String(now.getMinutes()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}_${HH}${MM}`;
+}
+function sanitizeUserLabel(raw) {
+  return String(raw || "usuario")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9-_ ]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+}
+
 export default function MisOportunidades() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const authHeader = useMemo(
     () => ({ headers: { Authorization: `Bearer ${token}` } }),
     [token]
   );
 
-  // tabla / filtros
+  // filtros tabla
   const [rows, setRows] = useState([]);
   const [tipos, setTipos] = useState([]);
   const [filtroEstado, setFiltroEstado] = useState("");
   const [q, setQ] = useState("");
   const debouncedQ = useDebouncedValue(q, 450);
+
+  // rango de fechas (como en Reportes)
+  const [from, setFrom] = useState(""); // yyyy-mm-dd
+  const [to, setTo] = useState(""); // yyyy-mm-dd
 
   // paginación
   const [page, setPage] = useState(1);
@@ -35,17 +61,20 @@ export default function MisOportunidades() {
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  // export state (para deshabilitar botones)
+  const [exporting, setExporting] = useState(false);
+
   // modal
   const [openModal, setOpenModal] = useState(false);
   const [selected, setSelected] = useState(null);
 
-  /* Carga de etapas (para filtros y StagePath del modal) */
+  /* Carga de etapas */
   const loadTipos = async () => {
     const res = await api.get("/oportunidades/tipos/all", authHeader);
     setTipos(res.data || []);
   };
 
-  /* Carga de oportunidades */
+  /* Carga de oportunidades (respeta filtros y rango) */
   const load = async () => {
     setLoading(true);
     try {
@@ -54,15 +83,17 @@ export default function MisOportunidades() {
         limit,
         q: debouncedQ || undefined,
         estadoId: filtroEstado || undefined,
+        from: from || undefined,
+        to: to || undefined,
       };
       const res = await api.get("/oportunidades", { ...authHeader, params });
-      const items = res.data.items || [];
-      const total = res.data.total || 0;
-      const pages = res.data.pages || 1;
+      const items = res.data?.items || [];
+      const t = res.data?.total || 0;
+      const pgs = res.data?.pages || 1;
       setRows(items);
-      setTotal(total);
-      setPages(pages);
-      return { items, total, pages };
+      setTotal(t);
+      setPages(pgs);
+      return { items, total: t, pages: pgs };
     } finally {
       setLoading(false);
     }
@@ -77,38 +108,126 @@ export default function MisOportunidades() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, debouncedQ, filtroEstado, token]);
+  }, [page, debouncedQ, filtroEstado, from, to, token]);
 
   const canPrev = page > 1;
   const canNext = page < pages;
 
-  /* Cambiar etapa (StagePath del modal) */
-// ⬇️ Reemplaza tu handleUpdate por este (usa PUT y desestructura items)
-const handleUpdate = async (id, payload) => {
-  await api.put(`/oportunidades/${id}`, payload, authHeader); // PUT (no PATCH)
-  const { items } = await load();                             // <- desestructura
+  /* Actualización en modal */
+  const handleUpdate = async (id, payload) => {
+    await api.put(`/oportunidades/${id}`, payload, authHeader);
+    const { items } = await load();
+    if (selected?._id === id) {
+      const updated = Array.isArray(items)
+        ? items.find((r) => r._id === id)
+        : null;
+      setSelected(updated ?? { ...selected, ...payload });
+    }
+  };
 
-  if (selected?._id === id) {
-    const updated = Array.isArray(items) ? items.find(r => r._id === id) : null;
-    setSelected(updated ?? { ...selected, ...payload });
-  }
-};
+  const handleChangeEstado = async (id, estadoId) => {
+    await api.patch(`/oportunidades/${id}/estado`, { estadoId }, authHeader);
+    const { items } = await load();
+    if (selected?._id === id) {
+      const updated = Array.isArray(items)
+        ? items.find((r) => r._id === id)
+        : null;
+      setSelected(updated ?? selected);
+    }
+  };
 
-// ⬇️ Reemplaza tu handleChangeEstado por este (misma idea)
-const handleChangeEstado = async (id, estadoId) => {
-  await api.patch(`/oportunidades/${id}/estado`, { estadoId }, authHeader);
-  const { items } = await load(); // <- desestructura SIEMPRE
+  /* ===== Exportación a Excel ===== */
+  const userLabel =
+    sanitizeUserLabel(
+      user?.name ||
+        user?.displayName ||
+        user?.username ||
+        (user?.email || "").split("@")[0]
+    ) || "usuario";
 
-  if (selected?._id === id) {
-    const updated = Array.isArray(items) ? items.find(r => r._id === id) : null;
-    setSelected(updated ?? selected);
-  }
-};
+  const mapItemsForExport = (items) => {
+    // Mapea a columnas legibles (ajusta/añade si lo necesitas)
+    return (items || []).map((op) => {
+      const d = op?.createdAt ? new Date(op.createdAt) : null;
+      const fecha = d
+        ? `${String(d.getDate()).padStart(2, "0")}-${String(
+            d.getMonth() + 1
+          ).padStart(2, "0")}-${d.getFullYear()}`
+        : "";
+      return {
+        RUC: op?.ruc || "",
+        "Razón Social": op?.razonSocial || op?.base?.razonSocial || "",
+        Estado: op?.estadoNombre || "",
+        "Cargo Fijo (S/.)": Number(op?.monto || 0),
+        Cantidad: Number(op?.cantidad ?? 0),
+        "Fecha de Gestión": fecha,
+      };
+    });
+  };
+
+  const exportXLSX = (dataArray, filename) => {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(dataArray);
+    // Auto ancho simple
+    const cols = Object.keys(dataArray[0] || {});
+    ws["!cols"] = cols.map((k) => ({ wch: Math.max(k.length + 2, 16) }));
+    XLSX.utils.book_append_sheet(wb, ws, "Oportunidades");
+    XLSX.writeFile(wb, filename);
+  };
+
+  // Exporta SOLO la página visible
+
+  // Exporta TODO (con filtros y rango). Vamos paginando hasta traer todo.
+  const exportAllXLSX = async () => {
+    setExporting(true);
+    try {
+      const all = [];
+      let p = 1;
+      // recorremos páginas con mismos filtros
+      while (true) {
+        const params = {
+          page: p,
+          limit: 200, // subimos el límite para acelerar la exportación
+          q: debouncedQ || undefined,
+          estadoId: filtroEstado || undefined,
+          from: from || undefined,
+          to: to || undefined,
+        };
+        const res = await api.get("/oportunidades", { ...authHeader, params });
+        const items = res.data?.items || [];
+        all.push(...items);
+        const totalPages = res.data?.pages || 1;
+        if (p >= totalPages) break;
+        p += 1;
+      }
+
+      if (!all.length) {
+        alert("No hay datos para exportar con el filtro actual.");
+        return;
+      }
+
+      const data = mapItemsForExport(all);
+      const filename = `oportunidades_${getDateStamp()}_${userLabel}.xlsx`;
+      exportXLSX(data, filename);
+    } catch (e) {
+      console.error("Export All error", e);
+      alert("No se pudo exportar.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const onRangeChange = ({ from: f, to: t }) => {
+    // mismo manejo que en reportería
+    setFrom(f || "");
+    setTo(t || "");
+    setPage(1);
+  };
 
   return (
-    <div className="p-6 min-h-dvh bg-[#ebe8e8]">
+    <div className="p-6 min-h-dvh bg-[#F2F0F0]">
       {/* Toolbar */}
-      <div className="flex items-center gap-4 overflow-x-auto py-2 px-2 rounded-md">
+      <div className="flex flex-wrap items-center gap-3 overflow-x-auto py-2 px-2 rounded-md">
         <input
           value={q}
           onChange={(e) => {
@@ -116,7 +235,7 @@ const handleChangeEstado = async (id, estadoId) => {
             setQ(e.target.value);
           }}
           placeholder="Buscar por RUC o Razón Social"
-          className="w-64 md:w-80 border border-gray-300 rounded px-3 py-3 text-[12px] bg-white"
+          className="w-64 md:w-80 border border-gray-900 rounded px-3 py-3 text-[12px] bg-white"
         />
 
         <select
@@ -125,7 +244,7 @@ const handleChangeEstado = async (id, estadoId) => {
             setPage(1);
             setFiltroEstado(e.target.value);
           }}
-          className="w-56 border border-gray-300 rounded px-3 py-3 text-[12px] bg-white"
+          className="w-56 border border-gray-900 rounded px-3 py-3 text-[12px] bg-white"
           title="Filtrar por estado"
         >
           <option value="">Todos los estados</option>
@@ -136,9 +255,18 @@ const handleChangeEstado = async (id, estadoId) => {
           ))}
         </select>
 
+        {/* Rango de fechas (mismo componente que en reportería) */}
+        <ReportRangeFilters
+          from={from}
+          to={to}
+          minYear={2020}
+          maxYear={2030}
+          onChange={onRangeChange}
+        />
+
         <button
           onClick={load}
-          className="px-5 py-3.5 bg-gray-800 text-white font-bold text-xs rounded"
+          className="px-7 py-3.5 bg-gray-800 border border-gray-900 text-white font-bold text-xs rounded"
         >
           Buscar
         </button>
@@ -147,22 +275,36 @@ const handleChangeEstado = async (id, estadoId) => {
           onClick={() => {
             setQ("");
             setFiltroEstado("");
+            setFrom("");
+            setTo("");
             setPage(1);
           }}
-          className="px-5 py-3.5 bg-gray-300 text-gray-900 text-xs font-bold rounded"
+          className="px-7 py-3.5 bg-gray-300 border border-gray-900 text-gray-900 text-xs font-bold rounded"
         >
           Limpiar
         </button>
+
+        {/* Exportar */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={exportAllXLSX}
+            disabled={loading || exporting}
+            className="px-4 py-3.5 bg-indigo-600 border border-indigo-600 text-white text-xs font-bold rounded disabled:opacity-60"
+            title="Exportar todo con filtros"
+          >
+            {exporting ? "Exportando…" : "Exportar Oportunidades "}
+          </button>
+        </div>
       </div>
 
       {/* Tabla */}
       <div className="mx-2.5 shadow overflow-hidden bg-white mt-2">
         <div className="overflow-x-auto">
-          <table className="w-full text-[9px] text-center text-gray-900 font-semibold">
+          <table className="w-full text-[11px] text-center text-gray-900 font-semibold">
             <thead
               className="
                 sticky top-0 bg-gray-800 text-white
-                text-[10px] uppercase tracking-wide
+                text-[11px] uppercase tracking-wide
                 [&>tr]:h-11 [&>tr>th]:py-0
                 [&>tr>th]:font-extrabold
               "
@@ -180,7 +322,7 @@ const handleChangeEstado = async (id, estadoId) => {
             <tbody
               className="
                 divide-y-2 divide-gray-300
-                text-[9px] font-semibold text-gray-900
+                text-[11px] font-semibold text-gray-900
                 [&>tr]:h-9 [&>tr>td]:py-0 [&>tr>td]:align-middle
               "
             >
@@ -222,14 +364,19 @@ const handleChangeEstado = async (id, estadoId) => {
                       {Number(op.monto || 0).toLocaleString("es-PE")}
                     </td>
 
-                    <td className="px-4 whitespace-nowrap">{op.cantidad ?? "—"}</td>
+                    <td className="px-4 whitespace-nowrap">
+                      {op.cantidad ?? "—"}
+                    </td>
 
                     <td className="px-4 whitespace-nowrap">
                       {op.createdAt
                         ? (() => {
                             const d = new Date(op.createdAt);
                             const dd = String(d.getDate()).padStart(2, "0");
-                            const mm = String(d.getMonth() + 1).padStart(2, "0");
+                            const mm = String(d.getMonth() + 1).padStart(
+                              2,
+                              "0"
+                            );
                             const yy = d.getFullYear();
                             return `${dd} - ${mm} - ${yy}`;
                           })()
@@ -286,7 +433,7 @@ const handleChangeEstado = async (id, estadoId) => {
         op={selected}
         tipos={tipos}
         onChangeEstado={handleChangeEstado}
-        onUpdate={handleUpdate} // ← usa PUT en el padre
+        onUpdate={handleUpdate}
       />
     </div>
   );

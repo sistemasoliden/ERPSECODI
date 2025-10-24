@@ -14,7 +14,27 @@ import {
   Legend,
   LineChart,
   Line,
+  LabelList,
 } from "recharts";
+
+/* ======================= THEME Reutilizable ======================= */
+const THEME = {
+  pageBg: "#F2F0F0",
+  card: "rounded-lg border border-gray-300 bg-white p-4 shadow-md",
+  title: "text-sm font-bold text-blue-800 text-center",
+  tooltipBox: {
+    background: "white",
+    border: "1px solid #ddd",
+    borderRadius: 8,
+    boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+    padding: "8px 12px",
+    fontSize: 12,
+    color: "#111",
+  },
+  tooltipLabel: { color: "#111827", fontWeight: "bold", fontSize: 13 },
+  palette: ["#0ea5e9", "#14b8a6", "#f59e0b", "#a855f7", "#10b981", "#ef4444"],
+  lineColor: "#af0c0e",
+};
 
 /* ======================= Helpers comunes ======================= */
 const buildParams = (obj) => {
@@ -27,9 +47,7 @@ const buildParams = (obj) => {
         if (item !== undefined && item !== null && item !== "")
           p.append(k, item);
       });
-    } else {
-      p.append(k, v);
-    }
+    } else p.append(k, v);
   }
   return p;
 };
@@ -69,36 +87,56 @@ const monthLabel = {
   12: "Dic",
 };
 
+/* ======================= Componentes Tooltip ======================= */
+const LineTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const p = payload[0]?.payload || {};
+  return (
+    <div style={THEME.tooltipBox}>
+      <div style={THEME.tooltipLabel}>{p.mesLabel}</div>
+      <div>
+        Q: <b>{fmtInt(p.Q)}</b>
+      </div>
+      <div>
+        CF: <b>{fmtMoney(p.CF)}</b>
+      </div>
+    </div>
+  );
+};
+
+const BarTooltip = ({ active, payload, label, type }) => {
+  if (!active || !payload?.length) return null;
+  const v = payload[0]?.value ?? 0;
+  return (
+    <div style={THEME.tooltipBox}>
+      <div style={THEME.tooltipLabel}>{label}</div>
+      <div>{type === "cf" ? fmtMoney(v) : fmtInt(v)}</div>
+    </div>
+  );
+};
+
 /* ======================= Página ======================= */
 export default function RankingYProgreso() {
   const [filtros, setFiltros] = useState({});
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Ranking
-  const [topQ, setTopQ] = useState([]); // {consultor, userId, totalQ, totalCF}
+  const [topQ, setTopQ] = useState([]);
   const [topCF, setTopCF] = useState([]);
-
-  // Progreso
   const [ejecutivo, setEjecutivo] = useState("");
-  const [progreso, setProgreso] = useState([]); // [{mes:"01", Q, CF}]
+  const [progreso, setProgreso] = useState([]);
   const [yearSeries, setYearSeries] = useState(new Date().getFullYear());
   const [usuariosActivos, setUsuariosActivos] = useState([]);
 
-  // Opciones para selector (de ranking)
   const ejecutivosOpts = useMemo(() => {
-    return (
-      (usuariosActivos || [])
-        // 👇 Filtramos solo el rol que te interesa
-        .filter(
-          (u) =>
-            String(u.role) === "68a4f22d27e6abe98157a831" ||
-            String(u.role?._id) === "68a4f22d27e6abe98157a831"
-        )
-        // 👇 Mostramos nombre completo, o fallback
-        .map((u) => u.name || `${u.firstName} ${u.lastName}`.trim() || u.email)
-        .sort((a, b) => a.localeCompare(b))
-    );
+    return (usuariosActivos || [])
+      .filter(
+        (u) =>
+          String(u.role) === "68a4f22d27e6abe98157a831" ||
+          String(u.role?._id) === "68a4f22d27e6abe98157a831"
+      )
+      .map((u) => u.name || `${u.firstName} ${u.lastName}`.trim() || u.email)
+      .sort((a, b) => a.localeCompare(b));
   }, [usuariosActivos]);
 
   useEffect(() => {
@@ -114,20 +152,17 @@ export default function RankingYProgreso() {
   }, []);
 
   useEffect(() => {
-    if (ejecutivosOpts.length && !ejecutivo) {
+    if (ejecutivosOpts.length && !ejecutivo)
       setEjecutivo(ejecutivosOpts[0] || "");
-    }
   }, [ejecutivosOpts, ejecutivo]);
 
-  // ========= Carga Ranking (Top Q / Top CF) =========
+  /* === Carga Ranking === */
   useEffect(() => {
     let cancelled = false;
-
     const fetchRanking = async () => {
       try {
         if (initialLoading) setInitialLoading(true);
         else setRefreshing(true);
-
         const paramsBase = {
           estado: filtros.estado,
           year: filtros.anio,
@@ -137,7 +172,6 @@ export default function RankingYProgreso() {
           pdv: filtros.soloPdv ? "si" : "",
           cfMode: filtros.cfMode || "normal",
         };
-
         const [resQ, resCF] = await Promise.all([
           api.get("/ventas/consultores-ranking", {
             params: buildParams({ ...paramsBase, sortBy: "Q" }),
@@ -146,9 +180,7 @@ export default function RankingYProgreso() {
             params: buildParams({ ...paramsBase, sortBy: "CF" }),
           }),
         ]);
-
         if (cancelled) return;
-
         setTopQ(resQ.data?.data || []);
         setTopCF(resCF.data?.data || []);
       } catch (err) {
@@ -159,17 +191,15 @@ export default function RankingYProgreso() {
         else setRefreshing(false);
       }
     };
-
     fetchRanking();
     return () => {
       cancelled = true;
     };
-  }, [filtros]); // recarga con filtros
+  }, [filtros]);
 
-  // ========= Carga Progreso (línea mensual) =========
+  /* === Carga Progreso === */
   useEffect(() => {
     let cancelled = false;
-
     const y =
       Array.isArray(filtros.anio) && filtros.anio.length
         ? Number(filtros.anio[0])
@@ -181,10 +211,8 @@ export default function RankingYProgreso() {
         setYearSeries(y);
         return;
       }
-
       try {
         setRefreshing(true);
-
         const params = buildParams({
           consultor: ejecutivo,
           year: y,
@@ -194,11 +222,8 @@ export default function RankingYProgreso() {
           pdv: filtros.soloPdv ? "si" : "",
           cfMode: filtros.cfMode || "normal",
         });
-
         const res = await api.get("/ventas/consultor-progreso", { params });
-
         if (cancelled) return;
-
         const rows = res.data?.data || [];
         const mapped = rows.map((r) => ({
           mes: r.mes,
@@ -214,7 +239,6 @@ export default function RankingYProgreso() {
         if (!cancelled) setRefreshing(false);
       }
     };
-
     fetchProgreso();
     return () => {
       cancelled = true;
@@ -223,19 +247,21 @@ export default function RankingYProgreso() {
 
   /* ======================= Render ======================= */
   return (
-    <div className="min-h-[calc(100vh-88px)] w-full bg-[#ebe8e8] dark:bg-slate-950 p-4 md:p-6">
-      {/* Filtros arriba (idéntico patrón) */}
-      <div className="relative z-30 -mt-1 px-6">
-        <FiltrosWrapper>
-          {(f) => (
-            <SyncFiltros value={f} onChange={setFiltros}>
-              <div className="h-0 overflow-hidden" />
-            </SyncFiltros>
-          )}
-        </FiltrosWrapper>
+    <div className="p-6 min-h-dvh bg-[#F2F0F0]">
+      {/* Toolbar (Filtros arriba, sticky y visualmente separada) */}
+      <div className="z-30 bg-[#F2F0F0] pb-2">
+        <div className="px-2">
+          <FiltrosWrapper>
+            {(f) => (
+              <SyncFiltros value={f} onChange={setFiltros}>
+                <div className="h-0 overflow-hidden" />
+              </SyncFiltros>
+            )}
+          </FiltrosWrapper>
+        </div>
       </div>
 
-      {/* Loader inicial de pantalla completa */}
+      {/* Loader inicial */}
       {initialLoading || refreshing ? (
         <Loader
           variant="fullscreen"
@@ -243,176 +269,186 @@ export default function RankingYProgreso() {
           navbarHeight={88}
         />
       ) : (
-        <div className="mx-auto max-w-7xl px-2 md:px-4 py-6 space-y-8">
-          {/* ======= Controles superiores ======= */}
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-lg dark:bg-neutral-900">
-            <h3 className="mb-1 text-center text-sm font-semibold text-slate-900 dark:text-slate-100">
+        <div className="mx-auto max-w-7xl px-4 py-6 space-y-8">
+          {/* === Línea === */}
+          <div className={THEME.card}>
+            <h3 className={THEME.title}>
               Progreso de {ejecutivo || "(sin selección)"} ({yearSeries})
             </h3>
 
-            <div className="mt-2 h-[320px]">
-              <div className="flex justify-end">
-                <select
-                  value={ejecutivo}
-                  onChange={(e) => setEjecutivo(e.target.value)}
-                  className="ml-[280px] mt-[10px] mb-[20px] 
-               rounded-md border border-slate-300 
-               bg-white px-3 py-2 text-sm 
-               text-slate-700 shadow-md transition 
-               focus:border-blue-500 focus:ring-1 focus:ring-blue-500
-               dark:border-slate-700 dark:bg-neutral-900 dark:text-slate-200"
-                >
-                  {ejecutivosOpts.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                  {ejecutivosOpts.length === 0 && (
-                    <option value="">(sin datos)</option>
-                  )}
-                </select>
-              </div>
+            <div className="mt-4 flex justify-end">
+              <select
+                value={ejecutivo}
+                onChange={(e) => setEjecutivo(e.target.value)}
+                className="border border-gray-900 bg-white rounded-md px-3 py-3 text-sm text-gray-700 shadow-sm focus:ring-1 focus:ring-blue-600"
+              >
+                {ejecutivosOpts.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+                {ejecutivosOpts.length === 0 && (
+                  <option value="">(sin datos)</option>
+                )}
+              </select>
+            </div>
 
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart
-                  data={progreso}
-                  margin={{ top: 10, right: 50, left: 50, bottom: 10 }}
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart
+                data={progreso}
+                margin={{ top: 10, right: 30, left: 30, bottom: 10 }}
+              >
+                <defs>
+                  <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="5%"
+                      stopColor={THEME.lineColor}
+                      stopOpacity={0.9}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor={THEME.lineColor}
+                      stopOpacity={0.2}
+                    />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="mesLabel"
+                  tick={{ fontSize: 10, fill: "#111", fontWeight: "bold" }}
+                />
+                <YAxis tick={false} axisLine={false} />
+                <Tooltip content={<LineTooltip />} />
+                <Legend
+                  iconType="circle"
+                  wrapperStyle={{
+                    fontSize: 10,
+                    fontWeight: "bold",
+                    textTransform: "capitalize",
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Q"
+                  name="Cantidad"
+                  stroke="#2563eb"
+                  strokeWidth={1.8}
+                  dot={{ r: 2 }}
+                  activeDot={{ r: 5 }}
                 >
-                  <CartesianGrid strokeDasharray="2 2" vertical={false} />
-                  <XAxis dataKey="mesLabel" />
-                  <Tooltip
-                    content={({ payload }) => {
-                      if (!payload || !payload.length) return null;
-                      const p = payload[0]?.payload || {};
-                      return (
-                        <div className="rounded-md border bg-white px-3 py-2 text-xs shadow">
-                          <div className="mb-1 font-semibold">{p.mesLabel}</div>
-                          <div>
-                            Q: <b>{fmtInt(p.Q)}</b>
-                          </div>
-                          <div>
-                            CF: <b>{fmtMoney(p.CF)}</b>
-                          </div>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="CF"
-                    name="CF"
-                    stroke="#10004bff"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    isAnimationActive={true}
-                  />
-                  <Line
-                    type="monotone"
+                  <LabelList
                     dataKey="Q"
-                    name="Q"
-                    stroke="#eaee1dff"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    isAnimationActive={false}
+                    position="top"
+                    fontSize={10}
+                    fill="#111"
                   />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          {/* ======= Dos barras horizontales con scroll ======= */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {/* Top Q */}
-            <div className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-lg dark:bg-neutral-900">
-              <h3 className="mb-2 text-center text-sm font-semibold text-slate-900 dark:text-slate-100">
-                Ranking por Q (líneas)
-              </h3>
-
-              <div className="h-[480px] overflow-y-auto pr-2">
-                <BarChart
-                  layout="vertical"
-                  width={500} // 👈 ancho fijo, puedes ajustar
-                  height={topQ.length * 40} // 👈 cada barra ocupa ~40px
-                  data={topQ.map((r) => ({
-                    name: r.consultor || "(Sin nombre)",
-                    value: r.totalQ || 0,
-                  }))}
-                  margin={{ top: 15, right: 24, left: 12, bottom: 8 }}
-                  barCategoryGap="14%"
+                </Line>
+                <Line
+                  type="monotone"
+                  dataKey="CF"
+                  name="CF (S/.)"
+                  stroke="#14b8a6"
+                  strokeWidth={1.8}
+                  dot={{ r: 2 }}
+                  activeDot={{ r: 5 }}
                 >
-                  <CartesianGrid
-                    strokeDasharray="2 2"
-                    horizontal
-                    vertical={false}
+                  <LabelList
+                    dataKey="CF"
+                    position="top"
+                    fontSize={10}
+                    fill="#111"
                   />
-                  <XAxis type="number" tick={false} axisLine={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={220}
-                    tick={{ fontSize: 11, fill: "#334155" }}
-                  />
-                  <Tooltip
-                    formatter={(val) => [fmtInt(val), "Q"]}
-                    labelFormatter={(l) => l}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="value" name="Q" fill="#2563eb" />
-                </BarChart>
-              </div>
-            </div>
-            {/* Top CF */}
-            <div className="relative rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:bg-neutral-900">
-              <h3 className="mb-2 text-center text-sm font-semibold text-slate-900 dark:text-slate-100">
-                Ranking por CF (sin IGV)
-              </h3>
-
-              <div className="h-[480px] overflow-y-auto pr-2">
-                <BarChart
-                  layout="vertical"
-                  width={500}
-                  height={topCF.length * 40}
-                  data={topCF.map((r) => ({
-                    name: r.consultor || "(Sin nombre)",
-                    value: r.totalCF || 0,
-                  }))}
-                  margin={{ top: 8, right: 24, left: 12, bottom: 8 }}
-                  barCategoryGap="14%"
-                >
-                  <CartesianGrid
-                    strokeDasharray="2 2"
-                    horizontal
-                    vertical={false}
-                  />
-                  <XAxis type="number" tick={false} axisLine={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={220}
-                    tick={{ fontSize: 11, fill: "#334155" }}
-                  />
-                  <Tooltip
-                    formatter={(val) => [fmtMoney(val), "CF"]}
-                    labelFormatter={(l) => l}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="value" name="CF" fill="#16a34a" />
-                </BarChart>
-              </div>
-            </div>
+                </Line>
+              </LineChart>
+            </ResponsiveContainer>
           </div>
 
-          {/* ======= Progreso del ejecutivo ======= */}
-
-          {/* Overlay de refresco suave */}
-          {refreshing && (
-            <div className="pointer-events-none fixed inset-x-0 bottom-6 flex justify-center">
-              <div className="rounded-full bg-white/90 px-3 py-1 text-xs shadow ring-1 ring-slate-200">
-                Actualizando…
+          {/* === Barras === */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Q */}
+            <div className={THEME.card}>
+              <h3 className={THEME.title}>Ranking por Q (Líneas)</h3>
+              <div className="h-[460px] overflow-y-auto pr-2">
+                <ResponsiveContainer width="100%" height={topQ.length * 38}>
+                  <BarChart
+                    layout="vertical"
+                    data={topQ.map((r) => ({
+                      name: r.consultor || "(Sin nombre)",
+                      value: r.totalQ || 0,
+                    }))}
+                  >
+                    <CartesianGrid strokeDasharray="2 2" vertical={false} />
+                    <XAxis type="number" hide />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={200}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <Tooltip content={<BarTooltip type="q" />} />
+                    <Legend
+                      iconType="circle"
+                      wrapperStyle={{ fontSize: 10, fontWeight: "bold" }}
+                    />
+                    <Bar
+                      dataKey="value"
+                      name="Q"
+                      fill={THEME.palette[0]}
+                      radius={[0, 3, 3, 0]}
+                    >
+                      <LabelList
+                        dataKey="value"
+                        position="right"
+                        fontSize={10}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
-          )}
+
+            {/* CF */}
+            <div className={THEME.card}>
+              <h3 className={THEME.title}>Ranking por CF (sin IGV)</h3>
+              <div className="h-[460px] overflow-y-auto pr-2">
+                <ResponsiveContainer width="100%" height={topCF.length * 38}>
+                  <BarChart
+                    layout="vertical"
+                    data={topCF.map((r) => ({
+                      name: r.consultor || "(Sin nombre)",
+                      value: r.totalCF || 0,
+                    }))}
+                  >
+                    <CartesianGrid strokeDasharray="2 2" vertical={false} />
+                    <XAxis type="number" hide />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={200}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <Tooltip content={<BarTooltip type="cf" />} />
+                    <Legend
+                      iconType="circle"
+                      wrapperStyle={{ fontSize: 10, fontWeight: "bold" }}
+                    />
+                    <Bar
+                      dataKey="value"
+                      name="CF"
+                      fill={THEME.palette[1]}
+                      radius={[0, 3, 3, 0]}
+                    >
+                      <LabelList
+                        dataKey="value"
+                        position="right"
+                        fontSize={10}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

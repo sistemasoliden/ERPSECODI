@@ -1,107 +1,181 @@
-// controllers/reportes.tipificacionsupervisor.js
 import mongoose from "mongoose";
 import Assignment from "../models/Assignment.js";
 import Equipo from "../models/EquipoSecodi.js";
 import User from "../models/User.js";
+import { ROLES_IDS as AUTH_ROLES } from "../middlewares/auth.js";
 
-const TZ = "America/Lima";
+const ROLES_IDS = { ...(AUTH_ROLES || {}) }; // Debe incluir .comercial y .sistemas
+const dbg = (...a) => console.log("[tipificacion.supervisor]", ...a);
 
-// helpers de fecha
 function monthRangeLocalTZ(year, month) {
   const start = new Date(year, month - 1, 1, 0, 0, 0);
   const end   = new Date(year, month, 1, 0, 0, 0);
-  return { start, end };
+  return { start, end }; // [start, end)
+}
+
+function isSistemas(user) {
+  const roleId = String(user?.roleId || user?.role?._id || user?.role || "");
+  if (user?.isAdmin) return true;
+  if (ROLES_IDS?.sistemas && roleId === String(ROLES_IDS.sistemas)) return true;
+  const slug = String(user?.role?.slug || user?.role?.nombre || user?.role?.name || "")
+    .trim().toLowerCase();
+  return slug === "sistemas";
+}
+
+function commercialRoleQuery() {
+  const or = [];
+  const rid = String(ROLES_IDS?.comercial || "");
+  if (rid) {
+    if (mongoose.isValidObjectId(rid)) {
+      or.push({ role: new mongoose.Types.ObjectId(rid) });
+      or.push({ roleId: new mongoose.Types.ObjectId(rid) });
+      or.push({ "role._id": new mongoose.Types.ObjectId(rid) });
+    }
+    or.push({ role: rid }, { roleId: rid }, { "role._id": rid });
+  }
+  or.push(
+    { "role.slug": "comercial" },
+    { "role.name": "Comercial" },
+    { "role.nombre": "Comercial" }
+  );
+  return { $or: or };
 }
 
 /**
- * 📊 GET /api/reportes/tipificacion/por-ejecutivo
- * Resumen por ejecutivo del equipo del supervisor logueado.
- * Acepta filtros:
- *   - ?from=YYYY-MM-DD&to=YYYY-MM-DD
- *   - o ?month=MM&year=YYYY
+ * GET /api/reportes/tipificacion/por-ejecutivo
+ * Query:
+ *   - from/to  (YYYY-MM-DD)   o  month/year
+ *   - includeAllTeams=1 (solo efectivo para Sistemas)
+ * Respuesta:
+ *   { items:[{ejecutivoId, ejecutivo, total}], members:[{_id,name}] }
  */
 export async function distribucionPorEjecutivo(req, res) {
   try {
-    const supervisorId = req.user?._id;
-    if (!supervisorId) return res.status(401).json({ message: "No autenticado" });
+    const u = req.user || {};
+    if (!u?._id) return res.status(401).json({ message: "No autenticado" });
 
-    // 1) Encuentra los equipos donde el usuario es supervisor
-    const equipos = await Equipo.find({ supervisor: supervisorId }).select("_id").lean();
-    if (!equipos.length) return res.json({ items: [] });
+    dbg("init user=", u.email || u._id, "query=", req.query, "ROLES_IDS=", ROLES_IDS);
 
-    const equipoIds = equipos.map(e => e._id);
+    const includeAllTeams =
+      isSistemas(u) && String(req.query.includeAllTeams || "") === "1";
 
-    // 2) Miembros del/los equipo(s)
-    const miembros = await User.find({ equipo: { $in: equipoIds } })
-      .select({ _id: 1, name: 1 })
-      .lean();
+    dbg("isSistemas?", isSistemas(u), "includeAllTeams?", includeAllTeams);
 
-    if (!miembros.length) return res.json({ items: [] });
-
-    const memberIds = miembros.map(m => m._id);
-    const nameById = new Map(miembros.map(m => [String(m._id), m.name || "SIN NOMBRE"]));
-
-    // 3) Rango de fechas
-    let start, end, useLTE = false;
-    if (req.query.from && req.query.to) {
-      start = new Date(`${req.query.from}T00:00:00`);
-      end   = new Date(`${req.query.to}T23:59:59.999`);
-      useLTE = true; // cuando viene rango, usamos $lte para incluir el día final
+    // 1) Miembros base
+    let miembros = [];
+    if (includeAllTeams) {
+      // Sistemas -> TODOS los comerciales, aunque nunca hayan tipificado
+      const q = commercialRoleQuery();
+      dbg("commercialRoleQuery=", q);
+      miembros = await User.find(q)
+        .select({ _id: 1, name: 1, email: 1, role: 1, roleId: 1 })
+        .lean();
+      dbg("miembros(comercial) count=", miembros.length);
+      if (miembros.length === 0) {
+        dbg("WARN: No se encontraron usuarios con rol Comercial. Verifica ROLES_IDS.comercial y datos de usuarios.");
+      }
     } else {
-      const month = Number(req.query.month || req.query.mes);
-      const year  = Number(req.query.year || req.query.anio);
-      const r = monthRangeLocalTZ(year || new Date().getFullYear(), month || (new Date().getMonth() + 1));
-      start = r.start;
-      end   = r.end;   // fin exclusivo para mes/año
+      // Supervisor -> sólo sus equipos
+      const equipos = await Equipo.find({ supervisor: u._id })
+        .select("_id")
+        .lean();
+      dbg("equipos del supervisor:", equipos.map(e => e._id.toString()));
+      if (!equipos.length) {
+     // 🔒 Fallback seguro: si es Sistemas y no tiene equipos, traer todos los comerciales
+      if (isSistemas(u)) {
+        dbg("No hay equipos y usuario es Sistemas → fallback a comerciales");
+        const q = commercialRoleQuery();
+        miembros = await User.find(q)
+          .select({ _id: 1, name: 1, email: 1, role: 1, roleId: 1 })
+          .lean();
+        dbg("miembros(comercial,fallback) count=", miembros.length);
+     } else {
+        return res.json({ items: [], members: [] });
+      }
+   } else {
+      const equipoIds = equipos.map(e => e._id);
+      miembros = await User.find({ equipo: { $in: equipoIds } })
+        .select({ _id: 1, name: 1, email: 1 })
+        .lean();
+      dbg("miembros(equipo) count=", miembros.length);
+    }
     }
 
-    // 4) Agregación: agrupamos por ($ifNull(tipifiedBy, toUserId)) para contar bajo quien hizo la tipificación
+    if (!miembros.length) {
+      dbg("No hay miembros → retorna vacío");
+      return res.json({ items: [], members: [] });
+    }
+
+    const memberIds = miembros.map(m => m._id);
+    const nameById = new Map(
+      miembros.map(m => [String(m._id), m.name || m.email || "SIN NOMBRE"])
+    );
+
+    // 2) Rango de fechas
+    let start, end, useLTE = false;
+    if (req.query.from && req.query.to) {
+      start = new Date(`${req.query.from}T00:00:00.000-05:00`);
+      end   = new Date(`${req.query.to}T23:59:59.999-05:00`);
+      useLTE = true; // inclusivo
+    } else {
+      const month = Number(req.query.month || req.query.mes) || (new Date().getMonth() + 1);
+      const year  = Number(req.query.year  || req.query.anio) || new Date().getFullYear();
+      const r = monthRangeLocalTZ(year, month);
+      start = r.start; end = r.end; useLTE = false; // [start, end)
+    }
+    dbg("dateRange:", { start, end, useLTE });
+
+    // 3) Aggregate de tipificaciones
     const match = {
       tipificationId: { $exists: true, $ne: null },
-      // fecha
       tipifiedAt: useLTE ? { $gte: start, $lte: end } : { $gte: start, $lt: end },
-      // alcance por usuarios del equipo
       $or: [
         { tipifiedBy: { $in: memberIds } },
-        { $and: [
+        {
+          $and: [
             { $or: [{ tipifiedBy: { $exists: false } }, { tipifiedBy: null }] },
             { toUserId: { $in: memberIds } }
           ]
         }
       ]
     };
+    dbg("match aggregate:", JSON.stringify({
+      ...match,
+      tipifiedAt: undefined // evito log de fechas largas
+    }), "tipifiedAt=", match.tipifiedAt);
 
     const grouped = await Assignment.aggregate([
       { $match: match },
       {
         $group: {
           _id: { $ifNull: ["$tipifiedBy", "$toUserId"] },
-          total: { $sum: 1 }
-        }
+          total: { $sum: 1 },
+        },
       },
-      { $sort: { total: -1 } }
+      { $sort: { total: -1 } },
     ]);
+    dbg("grouped len=", grouped.length);
 
-    // 5) Unimos con TODOS los miembros (para que aparezcan en 0 si no tienen)
-    // ...todo tu código arriba igual...
+    // 4) Mezclar con TODOS los miembros (0 si no tienen)
+    const totalsById = new Map(grouped.map(g => [String(g._id), g.total]));
 
-// 5) Unimos con TODOS los miembros (para que aparezcan en 0 si no tienen)
-const totalsById = new Map(grouped.map(g => [String(g._id), g.total]));
+    const items = miembros
+      .map(m => ({
+        ejecutivoId: String(m._id),
+        ejecutivo: nameById.get(String(m._id)),
+        total: totalsById.get(String(m._id)) || 0,
+      }))
+      .sort((a, b) => b.total - a.total);
 
-const items = miembros.map(m => ({
-  ejecutivoId: String(m._id),                          // 👈 añade el id
-  ejecutivo: m.name || "SIN NOMBRE",
-  total: totalsById.get(String(m._id)) || 0
-})).sort((a,b) => b.total - a.total);
+    const members = miembros
+      .map(m => ({ _id: String(m._id), name: nameById.get(String(m._id)) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
-// 👇 añade members con {_id, name}
-res.json({
-  items,
-  members: miembros.map(m => ({ _id: String(m._id), name: m.name || "SIN NOMBRE" }))
-});
+    dbg("return sizes:", { items: items.length, members: members.length });
 
+    return res.json({ items, members });
   } catch (err) {
-    console.error("[reportes.tipificacion.supervisor] distribucionPorEjecutivo", err);
-    res.status(500).json({ message: "Error generando reporte supervisor" });
+    console.error("[reportes.tipificacion.supervisor] distribucionPorEjecutivo ERROR", err);
+    return res.status(500).json({ message: "Error generando reporte supervisor" });
   }
 }

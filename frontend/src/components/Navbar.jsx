@@ -5,7 +5,7 @@ import { ChevronDown } from "lucide-react";
 import logo from "../assets/iconosecodi.png";
 import NotificationsBell from "./NotificationsBell";
 
-// ───────────────────────── Roles / helpers ─────────────────────────
+/* ───────────────────────── Roles / helpers ───────────────────────── */
 const ROLES_IDS = {
   sistemas: "68a4f22d27e6abe98157a82c",
   gerencia: "68a4f22d27e6abe98157a82f",
@@ -14,7 +14,11 @@ const ROLES_IDS = {
   backoffice: "68a4f22d27e6abe98157a830",
 };
 
-const ROLES_REPORTES = [ROLES_IDS.sistemas, ROLES_IDS.gerencia];
+const ROLES_REPORTES = [
+  ROLES_IDS.sistemas,
+  ROLES_IDS.gerencia,
+  ROLES_IDS.supervisorcomercial,
+];
 
 function getNormalizedRoleId(user) {
   if (!user) return "";
@@ -24,7 +28,9 @@ function getNormalizedRoleId(user) {
     if (r._id) return String(r._id);
     if (r.id) return String(r.id);
     if (r.value) return String(r.value);
-    const label = String(r.slug || r.nombre || r.name || "").trim().toLowerCase();
+    const label = String(r.slug || r.nombre || r.name || "")
+      .trim()
+      .toLowerCase();
     const map = {
       sistemas: ROLES_IDS.sistemas,
       gerencia: ROLES_IDS.gerencia,
@@ -38,15 +44,7 @@ function getNormalizedRoleId(user) {
   return "";
 }
 
-const ProtectedRoute = ({ children, roleIds }) => {
-  const user = JSON.parse(localStorage.getItem("user"));
-  if (!user) return <Navigate to="/login" replace />;
-  const userRoleId = getNormalizedRoleId(user);
-  if (roleIds && !roleIds.includes(userRoleId)) return <Navigate to="/" replace />;
-  return children;
-};
-
-
+/* ───────────────────────── Component ───────────────────────── */
 export default function Navbar() {
   const rawUser = localStorage.getItem("user");
   const user = rawUser ? JSON.parse(rawUser) : null;
@@ -57,8 +55,10 @@ export default function Navbar() {
   const [showReportMenu, setShowReportMenu] = useState(false); // Reporte de Ventas
   const [showUsuariosMenu, setShowUsuariosMenu] = useState(false);
   const [openCRM, setOpenCRM] = useState(false);
-  const [showReporteriasMenu, setShowReporteriasMenu] = useState(false); // Comercial
-  const [showReporteriasSupervisorMenu, setShowReporteriasSupervisorMenu] = useState(false); // Supervisor
+  const [showReporteriasMenu, setShowReporteriasMenu] = useState(false); // Reportería personal
+  const [showReporteriasSupervisorMenu, setShowReporteriasSupervisorMenu] =
+    useState(false); // Reportería supervisor (grupos)
+  const [showSupervisionMenu, setShowSupervisionMenu] = useState(false); // NUEVO: dropdown para Sistemas
 
   // Refs para cerrar al hacer click afuera
   const userMenuRef = useRef(null);
@@ -67,6 +67,7 @@ export default function Navbar() {
   const crmMenuRef = useRef(null);
   const reporteriasMenuRef = useRef(null);
   const reporteriasSupervisorMenuRef = useRef(null);
+  const supervisionMenuRef = useRef(null);
 
   // Roles
   const userRoleId = getNormalizedRoleId(user);
@@ -77,10 +78,12 @@ export default function Navbar() {
   const isComercial = userRoleId === ROLES_IDS.comercial;
 
   // Visibilidad de menús
-  // Supervisor SOLO ve reportes por grupos; Comercial SOLO los personales.
-  const canSeeReporteriasComercial = isComercial || isGerencia; // personales
-  const canSeeReporteriasSupervisor = isSupervisorComercial || isGerencia || isSistemas; // por grupos
-  const canSeeReportsMenu = ROLES_REPORTES.includes(userRoleId); // Reportes de ventas
+  const canSeeReporteriasComercial = isComercial; // personales
+  const canSeeReporteriasSupervisor =
+    isSupervisorComercial || isGerencia || isSistemas; // por grupos
+  const canSeeReportsMenu = ROLES_REPORTES.includes(userRoleId); // Reporte de ventas
+
+  // CRM visible para Sistemas y Supervisor (si quieres incluir Gerencia, agrega || isGerencia)
 
   // Header de auth (para NotificationsBell)
   const authHeader = useMemo(() => {
@@ -93,9 +96,15 @@ export default function Navbar() {
     const handleClickOutside = (event) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target))
         setShowUserMenu(false);
-      if (reportMenuRef.current && !reportMenuRef.current.contains(event.target))
+      if (
+        reportMenuRef.current &&
+        !reportMenuRef.current.contains(event.target)
+      )
         setShowReportMenu(false);
-      if (usuariosMenuRef.current && !usuariosMenuRef.current.contains(event.target))
+      if (
+        usuariosMenuRef.current &&
+        !usuariosMenuRef.current.contains(event.target)
+      )
         setShowUsuariosMenu(false);
       if (crmMenuRef.current && !crmMenuRef.current.contains(event.target))
         setOpenCRM(false);
@@ -109,6 +118,11 @@ export default function Navbar() {
         !reporteriasSupervisorMenuRef.current.contains(event.target)
       )
         setShowReporteriasSupervisorMenu(false);
+      if (
+        supervisionMenuRef.current &&
+        !supervisionMenuRef.current.contains(event.target)
+      )
+        setShowSupervisionMenu(false);
     };
     const handleEsc = (e) => {
       if (e.key === "Escape") {
@@ -118,6 +132,7 @@ export default function Navbar() {
         setOpenCRM(false);
         setShowReporteriasMenu(false);
         setShowReporteriasSupervisorMenu(false);
+        setShowSupervisionMenu(false);
       }
     };
     document.addEventListener("click", handleClickOutside);
@@ -136,6 +151,7 @@ export default function Navbar() {
     setOpenCRM(false);
     setShowReporteriasMenu(false);
     setShowReporteriasSupervisorMenu(false);
+    setShowSupervisionMenu(false);
   }, [rawUser]);
 
   const handleLogout = () => {
@@ -150,7 +166,11 @@ export default function Navbar() {
     <nav className="bg-black text-white px-6 py-5 flex justify-between items-center shadow-lg z-50 relative">
       {/* Logo */}
       <Link to="/" className="flex items-center">
-        <img src={logo} alt="Logo SECODI" className="h-12 w-auto cursor-pointer" />
+        <img
+          src={logo}
+          alt="Logo SECODI"
+          className="h-12 w-auto cursor-pointer"
+        />
       </Link>
 
       {/* Enlaces y cuenta */}
@@ -173,8 +193,18 @@ export default function Navbar() {
               className="text-sm hover:text-gray-300 transition flex items-center gap-1"
             >
               Usuarios
-              <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+              <svg
+                className="w-3 h-3 ml-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             </button>
             {showUsuariosMenu && (
@@ -198,6 +228,70 @@ export default function Navbar() {
           </div>
         )}
 
+        {/* NUEVO: Dropdown "Supervisión" para SISTEMAS */}
+        {isSistemas && (
+          <div className="relative" ref={supervisionMenuRef}>
+            <button
+              type="button"
+              className="flex items-center gap-1 text-sm hover:text-gray-300 transition focus:outline-none"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowSupervisionMenu((v) => !v);
+              }}
+              aria-haspopup="menu"
+              aria-expanded={showSupervisionMenu}
+              aria-controls="supervision-menu"
+              title="Vistas de supervisión"
+            >
+              Supervisión
+            </button>
+
+            {showSupervisionMenu && (
+              <div
+                id="supervision-menu"
+                className="absolute left-1/2 -translate-x-1/2 mt-2 w-48 bg-white text-gray-800 rounded-sm text-center shadow-lg border border-gray-200 z-50 overflow-hidden transition-all duration-150 ease-out"
+                role="menu"
+              >
+                <Link
+                  to="/supervision-ejecutivos"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
+                  role="menuitem"
+                  onClick={() => setShowSupervisionMenu(false)}
+                >
+                  Supervisión de Ejecutivos
+                </Link>
+
+                <div className="my-1 border-t border-gray-200" />
+
+                <Link
+                  to="/supervisartipificaciones"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
+                  role="menuitem"
+                  onClick={() => setShowSupervisionMenu(false)}
+                >
+                  Supervisar Tipificaciones
+                </Link>
+                <Link
+                  to="/supervisaroportunidadess"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
+                  role="menuitem"
+                  onClick={() => setShowSupervisionMenu(false)}
+                >
+                  Supervisar Oportunidades
+                </Link>
+                <Link
+                  to="/supervisarcitas"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
+                  role="menuitem"
+                  onClick={() => setShowSupervisionMenu(false)}
+                >
+                  Supervisar Citas
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Reportería (personales): Comercial (+ opcional Gerencia) */}
         {canSeeReporteriasComercial && (
           <div className="relative" ref={reporteriasMenuRef}>
@@ -214,24 +308,24 @@ export default function Navbar() {
             </button>
 
             {showReporteriasMenu && (
-              <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-60 bg-white text-black rounded-lg shadow-xl z-50 overflow-hidden">
+              <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-36 bg-white text-gray-800 rounded-sm text-center shadow-lg border border-gray-200 z-50 overflow-hidden transition-all duration-150 ease-out">
                 <Link
                   to="/reporteria/tipificacion"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReporteriasMenu(false)}
                 >
                   Tipificación
                 </Link>
                 <Link
                   to="/reporteria/oportunidades"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReporteriasMenu(false)}
                 >
                   Oportunidades
                 </Link>
                 <Link
                   to="/reporteria/citas"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReporteriasMenu(false)}
                 >
                   Citas
@@ -257,47 +351,92 @@ export default function Navbar() {
             </button>
 
             {showReporteriasSupervisorMenu && (
-              <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-72 bg-white text-black rounded-lg shadow-xl z-50 overflow-hidden">
+              <div className="absolute left-1/2 -translate-x-1/2  mt-2 w-36 bg-white text-gray-800 rounded-sm text-center shadow-lg border border-gray-200 z-50 overflow-hidden transition-all duration-150 ease-out">
                 <Link
                   to="/reporteria-supervisor/tipificacion"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReporteriasSupervisorMenu(false)}
                 >
-                  Tipificación (Grupos)
+                  Tipificación
                 </Link>
                 <Link
                   to="/reporteria-supervisor/oportunidades"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReporteriasSupervisorMenu(false)}
                 >
-                  Oportunidades (Grupos)
+                  Oportunidades
                 </Link>
                 <Link
                   to="/reporteria-supervisor/citas"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReporteriasSupervisorMenu(false)}
                 >
-                  Citas (Grupos)
+                  Citas
                 </Link>
               </div>
             )}
           </div>
         )}
 
-        {/* Link Ventas (roles con acceso) */}
-        {user && (isSistemas || isBackoffice || isSupervisorComercial || isGerencia) && (
-          <Link to="/ventas" className="text-sm hover:text-gray-300 transition">
-            Ventas
-          </Link>
+        {/* Enlaces directos de tablas Supervisor (SOLO Supervisor/Gerencia; para Sistemas ya están en el dropdown de Supervisión) */}
+        {(isSupervisorComercial || isGerencia) && (
+          <>
+            <Link
+              to="/supervisartipificaciones"
+              className="text-sm hover:text-gray-300 transition"
+              title="Tipificaciones del equipo (tabla)"
+            >
+              Supervisar Tipificaciones
+            </Link>
+            <Link
+              to="/supervisaroportunidadess"
+              className="text-sm hover:text-gray-300 transition"
+              title="Oportunidades del equipo (tabla)"
+            >
+              Supervisar Oportunidades{" "}
+            </Link>
+            <Link
+              to="/supervisarcitas"
+              className="text-sm hover:text-gray-300 transition"
+              title="Citas del equipo (tabla)"
+            >
+              Supervisar Citas{" "}
+            </Link>
+          </>
         )}
 
-        {/* Bloque Comercial + CRM (solo Sistemas) */}
+        {/* Link Ventas (roles con acceso) */}
+        {user &&
+          (isSistemas ||
+            isBackoffice ||
+            isSupervisorComercial ||
+            isGerencia) && (
+            <Link
+              to="/ventas"
+              className="text-sm tet-center hover:text-gray-300 transition"
+            >
+              Ventas
+            </Link>
+          )}
+
+        {/* Bloque Comercial + CRM */}
         {user && (
           <div className="flex items-center gap-4">
             {isComercial && (
               <>
-                <Link to="/mi-base" className="text-sm hover:text-gray-300 transition" title="Mi Base">
+                <Link
+                  to="/mi-base"
+                  className="text-sm hover:text-gray-300 transition"
+                  title="Mi Base"
+                >
                   Mi Base
+                </Link>
+                <Link
+                  to="/mis-tipificaciones"
+                  className="text-sm hover:text-gray-300 transition"
+                  title="Mis tipificaciones"
+                >
+                  Mis tipificaciones
                 </Link>
                 <Link
                   to="/mis-oportunidades"
@@ -306,30 +445,33 @@ export default function Navbar() {
                 >
                   Mis oportunidades
                 </Link>
-                <Link to="/mis-citas" className="text-sm hover:text-gray-300 transition" title="Mis citas">
+                <Link
+                  to="/mis-citas"
+                  className="text-sm hover:text-gray-300 transition"
+                  title="Mis citas"
+                >
                   Mis citas
                 </Link>
 
                 <Link
-  to="/whatsapp"
-  className="text-sm hover:text-emerald-400 transition"
-  title="WhatsApp (Conexión y plantillas)"
->
-  WhatsApp
-</Link>
+                  to="/whatsapp"
+                  className="text-sm hover:text-emerald-400 transition"
+                  title="WhatsApp (Conexión y plantillas)"
+                >
+                  WhatsApp
+                </Link>
 
- <Link
-  to="/outlook"
-  className="text-sm hover:text-emerald-400 transition"
-  title="WhatsApp (Conexión y plantillas)"
->
-  Correo
-</Link>
-
+                <Link
+                  to="/outlook"
+                  className="text-sm hover:text-emerald-400 transition"
+                  title="Correo (Outlook)"
+                >
+                  Correo
+                </Link>
               </>
             )}
 
-            {isSistemas && (
+            {(isSistemas || isSupervisorComercial) && (
               <div className="relative" ref={crmMenuRef}>
                 <button
                   type="button"
@@ -341,34 +483,38 @@ export default function Navbar() {
                   aria-haspopup="menu"
                   aria-expanded={openCRM}
                   aria-controls="crm-menu"
+                  title="CRM (Asignación y Supervisión)"
                 >
                   CRM
-                  <ChevronDown
-                    className={`w-4 h-4 opacity-70 transition-transform ${openCRM ? "rotate-180" : ""}`}
-                  />
                 </button>
+
                 {openCRM && (
                   <div
                     id="crm-menu"
-                    className="absolute left-0 mt-2 w-56 rounded-xl bg-white/95 text-black shadow-lg ring-1 ring-black/5 backdrop-blur overflow-hidden"
+                    className="absolute left-1/2 -translate-x-1/2 mt-2 w-32 bg-white text-gray-800 rounded-sm text-center shadow-lg border border-gray-200 z-50 overflow-hidden transition-all duration-150 ease-out"
                     role="menu"
                   >
-                    <Link
-                      to="/asignacion"
-                      className="block px-4 py-2 text-sm hover:bg-gray-100"
-                      role="menuitem"
-                      onClick={() => setOpenCRM(false)}
-                    >
-                      Asignar base
-                    </Link>
-                    <Link
-                      to="/supervision-ejecutivos"
-                      className="block px-4 py-2 text-sm hover:bg-gray-100"
-                      role="menuitem"
-                      onClick={() => setOpenCRM(false)}
-                    >
-                      Supervisar ejecutivos
-                    </Link>
+                    {isSistemas && (
+                      <Link
+                        to="/asignacion"
+                        className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
+                        role="menuitem"
+                        onClick={() => setOpenCRM(false)}
+                      >
+                        Asignar base
+                      </Link>
+                    )}
+
+                    {(isSistemas || isSupervisorComercial) && (
+                      <Link
+                        to="/supervision-ejecutivos"
+                        className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
+                        role="menuitem"
+                        onClick={() => setOpenCRM(false)}
+                      >
+                        Supervisar Ejecutivos
+                      </Link>
+                    )}
                   </div>
                 )}
               </div>
@@ -378,7 +524,10 @@ export default function Navbar() {
 
         {/* Asignaciones (solo Sistemas) */}
         {isSistemas && (
-          <Link to="/asignaciones" className="text-sm hover:text-gray-300 transition">
+          <Link
+            to="/asignaciones"
+            className="text-sm hover:text-gray-300 transition"
+          >
             Asignaciones
           </Link>
         )}
@@ -392,36 +541,38 @@ export default function Navbar() {
                 e.stopPropagation();
                 setShowReportMenu((prev) => !prev);
               }}
-              className="text-sm hover:text-gray-300 transition"
+              className=" text-sm hover:text-gray-300 transition"
+              title="Reporte de Ventas"
             >
               Reporte de Ventas
             </button>
+
             {showReportMenu && (
-              <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-52 bg-white text-black rounded-lg shadow-xl z-50 overflow-hidden">
+              <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-36 bg-white text-gray-800 rounded-sm text-center shadow-lg border border-gray-200 z-50 overflow-hidden transition-all duration-150 ease-out">
                 <Link
                   to="/HistoricalSales"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReportMenu(false)}
                 >
                   Histórico Ventas
                 </Link>
                 <Link
                   to="/DashboardSales"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReportMenu(false)}
                 >
                   Dashboard Ventas
                 </Link>
                 <Link
                   to="/Historical"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReportMenu(false)}
                 >
                   Histórico de Ejecutivos
                 </Link>
                 <Link
                   to="/DashboardEjecutives"
-                  className="block px-4 py-3 text-sm hover:bg-gray-100 transition"
+                  className="block px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => setShowReportMenu(false)}
                 >
                   Dashboard Ejecutivos
@@ -431,7 +582,7 @@ export default function Navbar() {
           </div>
         )}
 
-        {/* 🔔 Notificaciones (componente desacoplado) */}
+        {/* 🔔 Notificaciones */}
         {user && <NotificationsBell authHeader={authHeader} enabled={!!user} />}
 
         {/* Menú de usuario */}
@@ -442,16 +593,16 @@ export default function Navbar() {
                 e.stopPropagation();
                 setShowUserMenu((prev) => !prev);
               }}
-              className="w-10 h-10 rounded-full bg-red-800 flex items-center justify-center text-lg font-semibold transition"
+              className="w-10 h-10 rounded-full bg-red-800 flex items-center justify-center text-lg font-semibold transition mr-4"
               title={user?.email || "Cuenta"}
             >
               {userInitial}
             </button>
 
             {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-36 bg-white text-black shadow-xl py-2 rounded-lg z-50">
+              <div className="absolute right-0 mt-2 w-24 bg-white text-gray-800 rounded-sm text-center shadow-lg border border-gray-200 z-50 overflow-hidden transition-all duration-150 ease-out">
                 <button
-                  className="block w-full text-center text-black px-4 py-2 hover:bg-gray-100 transition"
+                  className="block w-full px-4 py-2.5 text-sm hover:bg-gray-100 transition"
                   onClick={() => {
                     setShowUserMenu(false);
                     navigate("/cuenta");
@@ -460,7 +611,7 @@ export default function Navbar() {
                   Ver cuenta
                 </button>
                 <button
-                  className="block w-full text-center px-4 py-2 text-red-800 hover:bg-gray-100 transition"
+                  className="block w-full px-4 py-2.5 text-sm text-red-700 hover:bg-gray-100 transition"
                   onClick={handleLogout}
                 >
                   Cerrar sesión

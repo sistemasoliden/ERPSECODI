@@ -1,7 +1,12 @@
 // src/components/notifications/NotificationsBell.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
-import { getNotificaciones, marcarLeida, marcarTodasLeidas } from "../api/notificaciones";
+import {
+  getNotificaciones,
+  marcarLeida,
+  marcarTodasLeidas,
+} from "../api/notificaciones";
+import { Calendar } from "lucide-react";
 
 /** Sonido de alerta (chime elegante) */
 function playAlertSound() {
@@ -72,8 +77,8 @@ function playAlertSound() {
     }
 
     const t0 = ctx.currentTime;
-    bell({ freq: 1568, when: t0 });        // G6
-    bell({ freq: 1319.5, when: t0 + 0.12 });// E6
+    bell({ freq: 1568, when: t0 }); // G6
+    bell({ freq: 1319.5, when: t0 + 0.12 }); // E6
 
     setTimeout(() => ctx.close(), 1500);
   } catch {}
@@ -95,19 +100,27 @@ export default function NotificationsBell({ authHeader, enabled = true }) {
   const firstFetchDoneRef = useRef(false);
   const skipSoundNextReload = useRef(false);
 
-
   const loadNotifs = async () => {
     try {
       const { data } = await getNotificaciones(authHeader);
       const items = Array.isArray(data.items) ? data.items : [];
       const newUnread = Number(data.unread || 0);
 
+      const prevUnread = lastUnreadRef.current;
+      const isFirst = !firstFetchDoneRef.current;
+
       setNotifs(items);
       setUnread(newUnread);
 
-      // actualiza "último visto"
+      // si no es el primer fetch y subieron las no leídas → ding
+      if (!isFirst && newUnread > prevUnread && !skipSoundNextReload.current) {
+        playAlertSound();
+      }
+      // resetea el flag (solo se usa cuando hicimos push optimista local)
+      skipSoundNextReload.current = false;
+
       lastUnreadRef.current = newUnread;
-      if (!firstFetchDoneRef.current) firstFetchDoneRef.current = true;
+      if (isFirst) firstFetchDoneRef.current = true;
     } catch {
       // ignore
     }
@@ -154,7 +167,8 @@ export default function NotificationsBell({ authHeader, enabled = true }) {
   useEffect(() => {
     if (!enabled) return;
     const onDocClick = (e) => {
-      if (bellRef.current && !bellRef.current.contains(e.target)) setOpen(false);
+      if (bellRef.current && !bellRef.current.contains(e.target))
+        setOpen(false);
     };
     const onEsc = (e) => e.key === "Escape" && setOpen(false);
     document.addEventListener("click", onDocClick);
@@ -187,7 +201,7 @@ export default function NotificationsBell({ authHeader, enabled = true }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[320px] max-h-[70vh] overflow-auto bg-white text-black rounded-xl shadow-2xl ring-1 ring-black/5 z-50">
+        <div className="absolute right-0 mt-2 w-[240px] max-h-[50vh] overflow-auto bg-white text-black rounded-sm shadow-2xl ring-1 ring-black/5 z-50">
           <div className="px-4 py-2 flex items-center justify-between border-b">
             <div className="font-semibold text-sm">Notificaciones</div>
             {unread > 0 && (
@@ -204,50 +218,148 @@ export default function NotificationsBell({ authHeader, enabled = true }) {
           </div>
 
           {notifs.length === 0 ? (
-            <div className="p-4 text-sm text-gray-600">Sin notificaciones.</div>
+            <div className="p-4 text-xs text-gray-900">Sin notificaciones.</div>
           ) : (
-            <ul className="divide-y">
-              {notifs.slice(0, 10).map((n) => (
-                <li key={n._id} className={`p-3 ${!n.read ? "bg-indigo-50/40" : ""}`}>
-                  <div className="flex items-start gap-2">
-                    <div className="mt-0.5">{n.type === "cita" ? "📅" : "🔔"}</div>
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold">{n.title}</div>
-                      {n.message && <div className="text-xs text-gray-700">{n.message}</div>}
-                      {n.scheduledAt && (
-                        <div className="text-[11px] text-gray-500 mt-0.5">
-                          Programada:{" "}
-                          {n.scheduledAt
-                            ? new Date(n.scheduledAt).toLocaleString("es-PE", {
-                                dateStyle: "short",
-                                timeStyle: "short",
-                              })
-                            : "—"}
+            <ul className="divide-y divide-gray-400">
+              {notifs.slice(0, 10).map((n) => {
+                const isUnread = !n.read;
+                const isCita = n.type === "cita";
+
+                // —————— Dedup de mensaje “Cita con X — X”
+                const rawMsg = n.message || "";
+                const parts = rawMsg
+                  .split("—")
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                const normalize = (s) =>
+                  s.replace(/\s+/g, " ").trim().toLowerCase();
+
+                let prettyMessage = rawMsg;
+                if (parts.length === 2) {
+                  // si “Cita con <A>” y “<A>” son iguales → deja solo “Cita con <A>”
+                  const left = parts[0].replace(/^cita\s+con\s+/i, "").trim();
+                  const right = parts[1];
+                  if (normalize(left) === normalize(right)) {
+                    prettyMessage = parts[0]; // “Cita con <A>”
+                  }
+                }
+
+                return (
+                  <li
+                    key={n._id}
+                    className={[
+                      "p-3 sm:p-3.5 transition",
+                      "hover:bg-gray-50/80",
+                      isUnread ? "bg-indigo-50/40" : "bg-white",
+                      isCita
+                        ? "border-l-2 border-gray-900"
+                        : "border-l-2 border-gray-300",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Icono */}
+                      <div className="shrink-0">
+                        <div className="w-9 h-9 rounded-xl grid place-content-center">
+                          {isCita ? (
+                            <Calendar
+                              className="w-4.5 h-4.5 text-gray-900"
+                              strokeWidth={2}
+                            />
+                          ) : (
+                            <Bell
+                              className="w-4.5 h-4.5 text-gray-900"
+                              strokeWidth={2}
+                            />
+                          )}
                         </div>
-                      )}
-                      <div className="text-[11px] text-gray-400 mt-0.5">
-                        {n.createdAt
-                          ? new Date(n.createdAt).toLocaleString("es-PE", {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })
-                          : ""}
+                      </div>
+
+                      {/* Contenido */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Título → 2 líneas máx */}
+                          <div
+                            className="text-xs font-bold text-gray-900 break-words"
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 1,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                            title={n.title} // tooltip con el texto completo
+                          >
+                            {n.title}
+                          </div>
+                        </div>
+
+                        {/* Mensaje → 2 líneas máx + dedup */}
+                        {prettyMessage && (
+                          <div
+                            className="mt-0.5 text-xs font-bold text-red-900 leading-relaxed break-words"
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                            title={prettyMessage}
+                          >
+                            {prettyMessage}
+                          </div>
+                        )}
+
+                        {n.data?.ownerName && (
+                          <div className="mt-1 text-[10px] text-blue-900">
+                            De:{" "}
+                            <span className="font-medium">
+                              {n.data.ownerName}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          {n.scheduledAt && (
+                            <div className="text-[11px] text-gray-900 font-semibold">
+                              <span className="text-gray-900">Programada:</span>{" "}
+                              {(() => {
+                                const d = new Date(n.scheduledAt);
+                                const fecha = d
+                                  .toLocaleDateString("es-PE", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric",
+                                  })
+                                  .replaceAll("/", "-"); // cambia / por -
+                                const hora = d.toLocaleTimeString("es-PE", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                });
+                                return `${fecha} ${hora}`; // junta sin coma
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Botón Leída */}
+                      <div className="shrink-0">
+                        {!n.read && (
+                          <button
+                            className="text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-gray-900 text-gray-900 "
+                            onClick={async () => {
+                              await marcarLeida(n._id, authHeader);
+                              await loadNotifs();
+                            }}
+                          >
+                            Leída
+                          </button>
+                        )}
                       </div>
                     </div>
-                    {!n.read && (
-                      <button
-                        className="text-[11px] px-2 py-0.5 rounded border hover:bg-gray-50"
-                        onClick={async () => {
-                          await marcarLeida(n._id, authHeader);
-                          await loadNotifs();
-                        }}
-                      >
-                        Leída
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

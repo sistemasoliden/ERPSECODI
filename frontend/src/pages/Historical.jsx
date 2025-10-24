@@ -16,24 +16,14 @@ const buildParams = (obj) => {
 };
 
 const MONTH_NAMES = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
+  "Enero","Febrero","Marzo","Abril","Mayo","Junio",
+  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre",
 ];
 
 // Rol "Comercial"
 const COMERCIAL_ROLE_IDS = new Set(["68a4f22d27e6abe98157a831"]);
 
-/* ===================== Normalización de filtros (igual que Productos) ===================== */
+/* ===================== Normalización de filtros ===================== */
 const MONTH_NAME_TO_NUM = MONTH_NAMES.reduce((acc, name, i) => {
   acc[name.toLowerCase()] = i + 1;
   return acc;
@@ -45,16 +35,8 @@ const pickVal = (x) => {
     return x.map(pickVal).filter((v) => v != null && v !== "");
   if (typeof x === "object") {
     return (
-      x.value ??
-      x.id ??
-      x._id ??
-      x.slug ??
-      x.key ??
-      x.code ??
-      x.name ??
-      x.nombre ??
-      x.label ??
-      x
+      x.value ?? x.id ?? x._id ?? x.slug ?? x.key ?? x.code ??
+      x.name ?? x.nombre ?? x.label ?? x
     );
   }
   return x;
@@ -77,8 +59,7 @@ const normalizeFilters = (f = {}) => {
   const out = { ...f };
 
   out.anio = pickVal(f.anio);
-  if (Array.isArray(out.anio))
-    out.anio = out.anio.map((x) => Number(x)).filter(Boolean);
+  if (Array.isArray(out.anio)) out.anio = out.anio.map(Number).filter(Boolean);
   else if (out.anio != null) out.anio = Number(out.anio);
 
   out.mes = normalizeMonth(f.mes);
@@ -87,7 +68,7 @@ const normalizeFilters = (f = {}) => {
   out.producto = pickVal(f.producto);
   out.tipoVenta = pickVal(f.tipoVenta);
   out.soloPdv = Boolean(f.soloPdv);
-out.cfMode = f.cfMode || "normal";
+  out.cfMode = f.cfMode || "normal";
   return out;
 };
 
@@ -188,7 +169,7 @@ export default function ReportVentasConsultores() {
 
   const [filtros, setFiltros] = useState({});
   const [activos, setActivos] = useState([]);
-  const didAutoOpenRef = useRef(false); // evita reconfigurar expandibles tras filtrar
+  const didAutoOpenRef = useRef(false);
 
   /* ===================== Carga de datos ===================== */
   useEffect(() => {
@@ -204,7 +185,7 @@ export default function ReportVentasConsultores() {
           producto: nf.producto,
           tipoVenta: nf.tipoVenta,
           pdv: nf.soloPdv ? "si" : undefined,
-           cfMode: nf.cfMode || "normal",
+          cfMode: nf.cfMode || "normal",
         });
 
         const { data: res } = await api.get("/ventas/tablaconsultores", {
@@ -212,12 +193,9 @@ export default function ReportVentasConsultores() {
         });
         setData(res || []);
 
-        // Apertura inicial SOLO una vez y solo si NO hay filtro de año/mes
+        // Apertura inicial (una sola vez) si no hay filtro de año/mes
         if (!didAutoOpenRef.current && !nf.anio && !nf.mes) {
-          const yExp = {},
-            mExp = {},
-            cExp = {},
-            tExp = {};
+          const yExp = {}, mExp = {}, cExp = {}, tExp = {};
           const currentYear = new Date().getFullYear();
           const currentMonth = MONTH_NAMES[new Date().getMonth()];
 
@@ -244,7 +222,7 @@ export default function ReportVentasConsultores() {
     })();
   }, [filtros]);
 
-  // Usuarios activos (para inyección de comerciales)
+  // Usuarios activos (inyectar comerciales)
   useEffect(() => {
     (async () => {
       try {
@@ -266,7 +244,7 @@ export default function ReportVentasConsultores() {
     return roleName === "comercial";
   };
 
-  /* ===================== Agrupación: Año > Mes > Consultor > Tipo > Producto ===================== */
+  /* === Agrupación: Año > Mes > Consultor > Tipo > Producto === */
   const grouped = React.useMemo(() => {
     const g = {};
     const years = new Set();
@@ -290,7 +268,7 @@ export default function ReportVentasConsultores() {
       g[year][monthName][c][r.tipo][r.producto].push(r);
     }
 
-    // 3) Inyectar año/mes actual SOLO si NO hay filtro de año/mes
+    // 2) Inyectar año/mes actual si no hay filtros de Y/M
     const noYMFilters = !filtros?.anio && !filtros?.mes;
     if (noYMFilters) {
       const currentYear = new Date().getFullYear();
@@ -300,7 +278,7 @@ export default function ReportVentasConsultores() {
       monthsByYear[currentYear].add(currentMonthName);
     }
 
-    // 3) Inyectar comerciales activos (aparezcan aunque no tengan ventas)
+    // 3) Inyectar comerciales activos aunque no tengan ventas
     const comerciales = activos.filter(isComercial);
     years.forEach((y) => {
       g[y] ??= {};
@@ -312,7 +290,6 @@ export default function ReportVentasConsultores() {
             [user.firstName, user.lastName].filter(Boolean).join(" ") ||
             "—";
           if (!g[y][m][cName]) {
-            // crea estructura vacía mínima
             g[y][m][cName] = { "—": { "—": [] } };
           }
         });
@@ -339,17 +316,13 @@ export default function ReportVentasConsultores() {
 
   /* ===================== Render ===================== */
   return (
-    <div className="min-h-[calc(100vh-88px)] bg-[#ebe8e8] dark:bg-slate-950 p-4 md:p-6">
+    <div className="min-h-[calc(100vh-88px)] bg-[#F2F0F0] p-4 md:p-6">
       {loading && (
-        <Loader
-          variant="fullscreen"
-          message="Cargando ventas…"
-          navbarHeight={88}
-        />
+        <Loader variant="fullscreen" message="Cargando ventas…" navbarHeight={88} />
       )}
 
-      {/* Filtros (mismo estilo y patrón que Productos) */}
-      <div className="relative z-30 -mt-4 px-6">
+      {/* Filtros (barra superior) */}
+      <div className="relative z-30 -mt-1 px-6">
         <FiltrosWrapper>
           {(f) => {
             if (JSON.stringify(f) !== JSON.stringify(filtros)) {
@@ -359,34 +332,35 @@ export default function ReportVentasConsultores() {
           }}
         </FiltrosWrapper>
       </div>
+
       {/* Tabla */}
-      <div className="mt-4 overflow-hidden border border-slate-200 bg-white/70 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/60 relative ml-8 mr-8">
-        <div className="relative overflow-x-auto">
-          <table className="w-full table-fixed text-xs border">
-            <thead className="bg-gradient-to-r from-gray-100 to-gray-200 dark:from-slate-800 dark:to-slate-700 text-gray-700 dark:text-gray-200 capitalize text-xs font-semibold">
+      <div className="mt-4 mx-6 rounded-lg border border-gray-200 bg-white shadow-md overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full table-fixed text-[12px] text-gray-900">
+            <thead className="bg-gray-900 text-white uppercase text-[11px] font-semibold tracking-wide">
               <tr>
                 {/* 7 columnas que suman ~100% */}
-                <th className="w-[10%] px-4 py-3 text-center">Año</th>
-                <th className="w-[12%] px-4 py-3 text-center">Mes</th>
-                <th className="w-[24%] px-4 py-3 text-center">Consultor</th>
-                <th className="w-[18%] px-4 py-3 text-center">Tipo</th>
-                <th className="w-[18%] px-4 py-3 text-center">Producto</th>
-                <th className="w-[9%] px-4 py-3 text-center">CF</th>
-                <th className="w-[9%] px-4 py-3 text-center">Q</th>
+                <th className="w-[10%] px-4 h-12 text-center">Año</th>
+                <th className="w-[12%] px-4 h-12 text-center">Mes</th>
+                <th className="w-[24%] px-4 h-12 text-center">Consultor</th>
+                <th className="w-[18%] px-4 h-12 text-center">Tipo</th>
+                <th className="w-[18%] px-4 h-12 text-center">Producto</th>
+                <th className="w-[9%]  px-4 h-12 text-center">CF</th>
+                <th className="w-[9%]  px-4 h-12 text-center">Q</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-gray-200 dark:divide-slate-800 text-center">
+            <tbody className="divide-y divide-gray-200 text-center">
               {Object.keys(grouped)
                 .sort((a, b) => Number(b) - Number(a))
                 .map((year) => (
                   <React.Fragment key={year}>
                     {/* Año */}
                     <tr
-                      className="bg-red-800 text-white cursor-pointer hover:bg-red-900 transition"
+                      className="bg-gray-400 text-white cursor-pointer hover:bg-gray-700 transition-colors"
                       onClick={() => toggleYear(year)}
                     >
-                      <td className="px-4 py-3 font-bold tracking-wide text-center text-xs">
+                      <td className="px-4 h-12 font-bold text-xs text-center tracking-wide">
                         <ChevronDown
                           className={`inline w-3 h-3 mr-3 transition-transform duration-300 ${
                             expandedYears[year] ? "rotate-180" : ""
@@ -400,23 +374,20 @@ export default function ReportVentasConsultores() {
                     {/* Mes */}
                     {expandedYears[year] &&
                       Object.keys(grouped[year])
-                        .sort(
-                          (a, b) =>
-                            MONTH_NAMES.indexOf(b) - MONTH_NAMES.indexOf(a)
-                        )
+                        .sort((a, b) => MONTH_NAMES.indexOf(b) - MONTH_NAMES.indexOf(a))
                         .map((month) => {
                           const mSum = getMonthTotals(grouped, year, month);
                           return (
                             <React.Fragment key={month}>
                               <tr
-                                className="bg-gray-100 dark:bg-slate-800 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 transition"
+                                className="bg-gray-100 cursor-pointer hover:bg-gray-200 transition"
                                 onClick={() => toggleMonth(year, month)}
                               >
                                 <td></td>
-                                <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200">
+                                <td className="px-4 h-12 font-semibold text-gray-800">
                                   <div className="flex items-center gap-3 pl-8">
                                     <ChevronDown
-                                      className={`w-4 h-4 transition-transform duration-300 ${
+                                      className={`w-4 h-4 text-gray-700 transition-transform duration-300 ${
                                         expandedMonths[`${year}-${month}`]
                                           ? "rotate-180"
                                           : ""
@@ -428,10 +399,10 @@ export default function ReportVentasConsultores() {
                                 <td></td>
                                 <td></td>
                                 <td></td>
-                                <td className="px-4 py-3 font-semibold text-red-800">
+                                <td className="px-4 h-12 font-semibold text-blue-800">
                                   {fmtPEN(mSum.cf)}
                                 </td>
-                                <td className="px-4 py-3 font-semibold text-red-800">
+                                <td className="px-4 h-12 font-semibold text-blue-800">
                                   {fmtNumber(mSum.q, 0)}
                                 </td>
                               </tr>
@@ -443,33 +414,22 @@ export default function ReportVentasConsultores() {
                                   .map((consultor) => {
                                     const cKey = `${year}-${month}-${consultor}`;
                                     const cSum = getConsultorTotals(
-                                      grouped,
-                                      year,
-                                      month,
-                                      consultor
+                                      grouped, year, month, consultor
                                     );
 
                                     return (
                                       <React.Fragment key={consultor}>
                                         <tr
-                                          className="bg-white dark:bg-slate-900 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800"
-                                          onClick={() =>
-                                            toggleConsultor(
-                                              year,
-                                              month,
-                                              consultor
-                                            )
-                                          }
+                                          className="bg-white cursor-pointer hover:bg-gray-50 transition"
+                                          onClick={() => toggleConsultor(year, month, consultor)}
                                         >
                                           <td></td>
                                           <td></td>
-                                          <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">
+                                          <td className="px-4 h-12 font-semibold text-gray-700">
                                             <div className="flex items-center gap-3 pl-6">
                                               <ChevronDown
-                                                className={`w-4 h-4 transition-transform duration-300 ${
-                                                  expandedConsultores[cKey]
-                                                    ? "rotate-180"
-                                                    : ""
+                                                className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${
+                                                  expandedConsultores[cKey] ? "rotate-180" : ""
                                                 }`}
                                               />
                                               <span className="whitespace-nowrap overflow-hidden text-ellipsis">
@@ -479,61 +439,46 @@ export default function ReportVentasConsultores() {
                                           </td>
                                           <td></td>
                                           <td></td>
-                                          <td className="px-4 py-3 text-xs font-semibold text-blue-900">
+                                          <td className="px-4 h-12 text-blue-800 font-semibold">
                                             {fmtPEN(cSum.cf)}
                                           </td>
-                                          <td className="px-4 py-3 text-xs font-semibold text-blue-900">
+                                          <td className="px-4 h-12 text-blue-800 font-semibold">
                                             {fmtNumber(cSum.q, 0)}
                                           </td>
                                         </tr>
 
                                         {/* Tipo */}
                                         {expandedConsultores[cKey] &&
-                                          Object.keys(
-                                            grouped[year][month][consultor]
-                                          ).map((tipo) => {
+                                          Object.keys(grouped[year][month][consultor]).map((tipo) => {
                                             const tKey = `${year}-${month}-${consultor}-${tipo}`;
                                             const tSum = getTipoTotals(
-                                              grouped,
-                                              year,
-                                              month,
-                                              consultor,
-                                              tipo
+                                              grouped, year, month, consultor, tipo
                                             );
 
                                             return (
                                               <React.Fragment key={tipo}>
                                                 <tr
-                                                  className="bg-gray-50 dark:bg-slate-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
-                                                  onClick={() =>
-                                                    toggleTipo(
-                                                      year,
-                                                      month,
-                                                      consultor,
-                                                      tipo
-                                                    )
-                                                  }
+                                                  className="bg-[#f7f7f7] cursor-pointer hover:bg-gray-100 transition"
+                                                  onClick={() => toggleTipo(year, month, consultor, tipo)}
                                                 >
                                                   <td></td>
                                                   <td></td>
                                                   <td></td>
-                                                  <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-200">
+                                                  <td className="px-4 h-12 font-medium text-gray-700">
                                                     <div className="flex items-center gap-3 pl-8">
                                                       <ChevronDown
-                                                        className={`w-4 h-4 transition-transform duration-300 ${
-                                                          expandedTipos[tKey]
-                                                            ? "rotate-180"
-                                                            : ""
+                                                        className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${
+                                                          expandedTipos[tKey] ? "rotate-180" : ""
                                                         }`}
                                                       />
                                                       <span>{tipo}</span>
                                                     </div>
                                                   </td>
                                                   <td></td>
-                                                  <td className="px-4 py-3 text-xs font-semibold text-slate-800">
+                                                  <td className="px-4 h-12 text-slate-800 font-semibold">
                                                     {fmtPEN(tSum.cf)}
                                                   </td>
-                                                  <td className="px-4 py-3 text-xs font-semibold text-slate-800">
+                                                  <td className="px-4 h-12 text-slate-800 font-semibold">
                                                     {fmtNumber(tSum.q, 0)}
                                                   </td>
                                                 </tr>
@@ -541,36 +486,25 @@ export default function ReportVentasConsultores() {
                                                 {/* Producto */}
                                                 {expandedTipos[tKey] &&
                                                   Object.keys(
-                                                    grouped[year][month][
-                                                      consultor
-                                                    ][tipo]
+                                                    grouped[year][month][consultor][tipo]
                                                   ).map((prod) => {
                                                     const pSum = getProdTotals(
-                                                      grouped,
-                                                      year,
-                                                      month,
-                                                      consultor,
-                                                      tipo,
-                                                      prod
+                                                      grouped, year, month, consultor, tipo, prod
                                                     );
                                                     return (
                                                       <tr
                                                         key={prod}
-                                                        className="bg-white dark:bg-slate-900 hover:bg-gray-50 dark:hover:bg-slate-800"
+                                                        className="bg-white hover:bg-gray-50 transition"
                                                       >
                                                         <td></td>
                                                         <td></td>
                                                         <td></td>
                                                         <td></td>
-                                                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200 text-center">
+                                                        <td className="px-4 h-12 text-gray-700 text-center">
                                                           {prod}
                                                         </td>
-                                                        <td className="px-4 py-3 text-xs">
-                                                          {fmtPEN(pSum.cf)}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-xs">
-                                                          {fmtNumber(pSum.q, 0)}
-                                                        </td>
+                                                        <td className="px-4 h-12">{fmtPEN(pSum.cf)}</td>
+                                                        <td className="px-4 h-12">{fmtNumber(pSum.q, 0)}</td>
                                                       </tr>
                                                     );
                                                   })}
@@ -586,10 +520,9 @@ export default function ReportVentasConsultores() {
                   </React.Fragment>
                 ))}
 
-              {/* Mostrar "sin resultados" solo si de verdad no hay ventas */}
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-6 text-gray-500">
+                  <td colSpan={7} className="py-6 text-center text-gray-500">
                     🚫 Sin resultados
                   </td>
                 </tr>

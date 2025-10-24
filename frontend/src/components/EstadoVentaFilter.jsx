@@ -73,11 +73,11 @@ function MultiSelect({
   let buttonText = placeholder;
 
   if (allSelected) {
-    buttonText = `Todos (${options.length})`; // 👈 muestra "Todos (N)"
+    buttonText = `Todos (${options.length})`;
   } else if (selectedLabels.length > 1) {
-    buttonText = `${selectedLabels.length} seleccionados`; // 👈 más claro
+    buttonText = `${selectedLabels.length} seleccionados`;
   } else if (selectedLabels.length === 1) {
-    buttonText = selectedLabels[0]; // 👈 nombre único
+    buttonText = selectedLabels[0];
   }
 
   return (
@@ -88,19 +88,16 @@ function MultiSelect({
         </label>
       )}
 
+      {/* 🔹 Botón principal del selector */}
       <button
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         className={[
-          (className =
-            "h-10 w-auto min-w-[140px] max-w-[160px] rounded-md border  text-[11px]"),
-          "bg-white text-black border-slate-300",
-          "hover:border-slate-400",
-          "shadow-sm transition",
-
+          "h-12 w-auto min-w-[140px] max-w-[160px] rounded-md border border-black text-[12px]",
+          "bg-white text-black hover:border-gray-700",
+          "shadow-sm transition py-3",
           "disabled:opacity-60 disabled:cursor-not-allowed",
-          "dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:border-slate-600 dark:focus:ring-offset-slate-950",
         ].join(" ")}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -121,39 +118,35 @@ function MultiSelect({
       {open && (
         <div
           className={[
-            "absolute z-20 mt-1 min-w-[140px] max-w-[140px] overflow-hidden border shadow-lg", // 👈 ancho fijo
+            "absolute z-20 mt-1 min-w-[140px] max-w-[140px] overflow-hidden border shadow-lg",
             "bg-white border-slate-200",
             "dark:bg-slate-900 dark:border-slate-700",
           ].join(" ")}
         >
-          {/* Header sticky con acciones */}
+          {/* Header con acciones */}
           <div
             className={[
-              "sticky top-0 z-10 flex justify-between items-center gap-1 border-b px-2 py-1.5", // 👈 más compacto
-              "bg-white/95 backdrop-blur",
-              "border-slate-200",
-              "dark:bg-slate-900/80 dark:border-slate-700",
+              "sticky top-0 z-10 flex justify-between items-center gap-1 border-b px-2 py-1.5",
+              "bg-white/95 backdrop-blur border-slate-200",
             ].join(" ")}
           >
             <button
-              className="flex-1 rounded-md border border-slate-300 bg-slate-50 px-2 py-2 text-[10px] 
-                   font-medium hover:bg-slate-100 transition
-                   dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+              className="flex-1 rounded-md border border-black bg-slate-50 px-2 py-3 text-[10px] 
+                   font-medium hover:bg-slate-100 transition"
               onClick={handleSelectAll}
             >
               Todo
             </button>
             <button
-              className="flex-1 rounded-md border border-slate-300 bg-slate-50 px-2 py-2 text-[10px] 
-                   font-medium hover:bg-slate-100 transition
-                   dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+              className="flex-1 rounded-md border border-black bg-slate-50 px-2 py-3 text-[10px] 
+                   font-medium hover:bg-slate-100 transition"
               onClick={handleClear}
             >
               Limpiar
             </button>
           </div>
 
-          {/* Lista de opciones */}
+          {/* Lista */}
           <ul role="listbox" className="max-h-[160px] overflow-auto py-1">
             {filtered.length === 0 && (
               <li className="px-3 py-2 text-[11px] text-slate-500 dark:text-slate-400">
@@ -164,12 +157,7 @@ function MultiSelect({
               const checked = (value || []).includes(o.value);
               return (
                 <li key={o.value}>
-                  <label
-                    className={[
-                      "flex cursor-pointer items-center gap-2 px-3 py-1 text-[11px]",
-                      "hover:bg-slate-50 dark:hover:bg-slate-800/60",
-                    ].join(" ")}
-                  >
+                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1 text-[11px] hover:bg-slate-50 dark:hover:bg-slate-800/60">
                     <input
                       type="checkbox"
                       className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600"
@@ -183,7 +171,7 @@ function MultiSelect({
             })}
           </ul>
 
-          {/* Footer con estado */}
+          {/* Footer */}
           <div className="border-t px-2 py-1.5 text-[10px] text-slate-600 dark:text-slate-400 dark:border-slate-700">
             {allSelected
               ? "Todos seleccionados"
@@ -195,32 +183,24 @@ function MultiSelect({
   );
 }
 
-/* ──────────────────────────────────────────────────────────
-   Filtro principal (compacto + mejor alineado)
-────────────────────────────────────────────────────────── */
 export default function EstadoVentaFilter({
   value,
   onChange,
   label = "",
   disabled = false,
-
   yearValue,
   onChangeYear,
   monthValue,
   onChangeMonth,
-
   tipoVentaValue,
   onChangeTipoVenta,
   pdvOnly,
   onChangePdvOnly,
-
-  cfMode = "normal", // "normal" | "facturacion"
-  onChangeCfMode, // setter
-
+  cfMode = "normal",
+  onChangeCfMode,
   onClear,
   className = "",
 }) {
-  // -------- Estado --------
   const [items, setItems] = useState([]);
   const [loadingEstados, setLoadingEstados] = useState(true);
   const [errEstados, setErrEstados] = useState("");
@@ -232,7 +212,6 @@ export default function EstadoVentaFilter({
       try {
         const res = await api.get("/estadosventa");
         const data = Array.isArray(res.data) ? res.data : [];
-
         if (!alive) return;
         const ESTADO_INACTIVO = "Inactivo";
         const activos = data.filter(
@@ -240,7 +219,6 @@ export default function EstadoVentaFilter({
             (x.nombre || x.name || "").toLowerCase() !==
             ESTADO_INACTIVO.toLowerCase()
         );
-
         setItems(
           activos.map((x) => ({
             id: x._id,
@@ -259,7 +237,6 @@ export default function EstadoVentaFilter({
     };
   }, []);
 
-  // -------- Año --------
   const [years, setYears] = useState([]);
   const [errYears, setErrYears] = useState("");
   const [yearLocal, setYearLocal] = useState([]);
@@ -300,7 +277,6 @@ export default function EstadoVentaFilter({
     if (onChangeMonth) onChangeMonth(arr);
   };
 
-  // --- Meses independientes (fijos) ---
   const monthOptions = useMemo(
     () =>
       Array.from({ length: 12 }, (_, i) => ({
@@ -310,7 +286,6 @@ export default function EstadoVentaFilter({
     []
   );
 
-  // -------- Tipos de Venta --------
   const [tiposVenta, setTiposVenta] = useState([]);
   const [errTipos, setErrTipos] = useState("");
   useEffect(() => {
@@ -327,7 +302,7 @@ export default function EstadoVentaFilter({
   return (
     <div
       className={[
-        "flex flex-wrap items-center gap-x-8 gap-y-2 px-3 py-3", // 👈 más compacto (py-3)
+        "flex flex-wrap items-center gap-x-8 gap-y-2 px-3 py-3",
         className || "",
       ].join(" ")}
     >
@@ -415,17 +390,17 @@ export default function EstadoVentaFilter({
         </button>
       </div>
 
-      {/* Selector CF (Normal vs Facturación SIN IGV) */}
+      {/* Selector CF */}
       <div className="flex items-center gap-2">
-        <div className="inline-flex rounded-md border border-slate-300 overflow-hidden dark:border-slate-600">
+        <div className="inline-flex rounded-md border border-black overflow-hidden">
           <button
             type="button"
             onClick={() => onChangeCfMode?.("normal")}
             className={[
-              "px-3 py-3 text-[11px] transition",
+              "px-3 h-12 text-[11px] transition",
               cfMode === "normal"
-                ? "bg-emerald-500 text-white"
-                : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+                ? "bg-emerald-900 text-white"
+                : "bg-white text-slate-700 hover:bg-slate-50",
             ].join(" ")}
             title="Usar CF SIN IGV"
           >
@@ -435,10 +410,10 @@ export default function EstadoVentaFilter({
             type="button"
             onClick={() => onChangeCfMode?.("facturacion")}
             className={[
-              "px-3 py-1.5 text-[11px] transition border-l border-slate-300 dark:border-slate-600",
+              "px-3 h-12 text-[11px] transition border-l border-black",
               cfMode === "facturacion"
-                ? "bg-emerald-500 text-white"
-                : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+                ? "bg-blue-900 text-white"
+                : "bg-white text-slate-700 hover:bg-slate-50",
             ].join(" ")}
             title="Usar CF FACTURACIÓN DSCTO SIN IGV"
           >
@@ -452,18 +427,9 @@ export default function EstadoVentaFilter({
         <button
           type="button"
           onClick={() => onClear()}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-md 
-             bg-slate-100 px-6 text-[11px] font-medium text-slate-700 shadow-sm
-             hover:bg-slate-200 transition
-             dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+          className="inline-flex h-12 items-center justify-center gap-1.5 rounded-md border border-black bg-slate-100 px-6 py-3 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-200 transition"
           title="Limpiar filtros"
         >
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
-            <path
-              d="M12 5V1L7 6l5 5V7c2.76 0 5 2.24 5 5a5 5 0 1 1-5-5z"
-              fill="currentColor"
-            />
-          </svg>
           Limpiar
         </button>
       )}

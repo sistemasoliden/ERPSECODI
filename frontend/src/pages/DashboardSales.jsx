@@ -355,7 +355,6 @@ export default function DashboardComparativas() {
     [data, monthLabel]
   );
 
-  // Tooltip para el gráfico Mes vs YTD (muestra MTD, YTD y Proyección)
   // Tooltip MES vs YTD con MTD, YTD y Proyección (mes o año)
   const MesVsYtdTooltip = ({
     active,
@@ -407,852 +406,604 @@ export default function DashboardComparativas() {
   };
 
   /* ============================== RETURN ============================== */
-  return (
-    <div className="min-h-[calc(100vh-88px)] w-full  bg-[#ebe8e8] dark:bg-slate-950 p-4 md:p-6">
-      {/* 🔹 Bloque de filtros (igual que Ventas.jsx) */}
-      <div className="relative z-30 -mt-1 px-6">
-        <FiltrosWrapper>
-          {(f) => (
-            <SyncFiltros value={f} onChange={setFiltros}>
-              <div className="h-0 overflow-hidden" />
-            </SyncFiltros>
-          )}
-        </FiltrosWrapper>
+return (
+  <div className="min-h-[calc(100vh-88px)] w-full bg-[#F2F0F0] dark:bg-slate-950 p-4 md:p-6">
+    {/* 🔹 Filtros (mismo patrón que Ventas.jsx) */}
+    <div className="relative z-30 -mt-1 px-6">
+      <FiltrosWrapper>
+        {(f) => (
+          <SyncFiltros value={f} onChange={setFiltros}>
+            <div className="h-0 overflow-hidden" />
+          </SyncFiltros>
+        )}
+      </FiltrosWrapper>
+    </div>
+
+    {/* 🔹 Loader / vacío */}
+    {loading ? (
+      <Loader variant="fullscreen" message="Cargando datos…" navbarHeight={88} />
+    ) : data.length === 0 ? (
+      <div className="flex min-h-[60vh] items-center justify-center px-6">
+        <div className="text-center">
+          <div className="mb-3 text-3xl">📭</div>
+          <p className="text-sm text-slate-500">No hay datos para mostrar</p>
+        </div>
       </div>
-      {/* 🔹 Loader / vacío */}
-      {loading ? (
-        <Loader
-          variant="fullscreen"
-          message="Cargando datos…"
-          navbarHeight={88}
-        />
-      ) : data.length === 0 ? (
-        <div className="flex min-h-[60vh] items-center justify-center px-6">
-          <div className="text-center">
-            <div className="mb-3 text-3xl">📭</div>
-            <p className="text-sm text-slate-500">No hay datos para mostrar</p>
+    ) : (
+      <div className="mx-auto max-w-7xl px-4 py-6">
+        {/* ====== LÍNEA: CF / Q ====== */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {/* CF */}
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:bg-neutral-900">
+            <h3 className="mb-3 text-center text-sm text-slate-900 dark:text-slate-100">
+              {filtros.cfMode === "facturacion"
+                ? "CF Facturación Dscto (SIN IGV)"
+                : "Cargo Fijo (SIN IGV)"}
+            </h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={chartData} margin={{ top: 10, right: 20, left: 20, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="2 2" vertical={false} />
+                <XAxis dataKey="mesLabel" className="text-[10px]" />
+                <Tooltip
+                  content={({ label, payload }) => {
+                    if (!payload || payload.length === 0) return null;
+                    return (
+                      <div className="border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                        <div className="mb-1 text-center text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          {payload[0]?.payload?.mes || label}
+                        </div>
+                        {payload.map((item, i) => (
+                          <div key={i} className="flex justify-between text-xs text-slate-600 dark:text-slate-300">
+                            <span className="font-medium">{item.name}:</span>
+                            <span className="ml-2 font-semibold" style={{ color: item.stroke }}>
+                              {item.name === "CF" ? fmtMoney(item.value) : fmtInt(item.value)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="CF"
+                  stroke="#328708ff"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  isAnimationActive={firstRender.current}
+                  animationDuration={1200}
+                  animationEasing="ease-in-out"
+                  onAnimationEnd={() => {
+                    firstRender.current = false;
+                  }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Q */}
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:bg-neutral-900">
+            <h3 className="mb-3 text-center text-sm text-slate-900 dark:text-slate-100">Q de Líneas</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={chartData} margin={{ top: 10, right: 20, left: 20, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="2 2" vertical={false} />
+                <XAxis dataKey="mesLabel" className="text-[10px]" />
+                <Tooltip
+                  content={({ label, payload }) => {
+                    if (!payload || payload.length === 0) return null;
+                    return (
+                      <div className="border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                        <div className="mb-1 text-center text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          {payload[0]?.payload?.mes || label}
+                        </div>
+                        {payload.map((item, i) => (
+                          <div key={i} className="flex justify-between text-xs text-slate-600 dark:text-slate-300">
+                            <span className="font-medium">{item.name}:</span>
+                            <span className="ml-2 font-semibold" style={{ color: item.stroke }}>
+                              {item.name === "Q" ? fmtInt(item.value) : item.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="Q"
+                  stroke="#9c0494ff"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  isAnimationActive={firstRender.current}
+                  animationDuration={1200}
+                  animationEasing="ease-in-out"
+                  onAnimationEnd={() => {
+                    firstRender.current = false;
+                  }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </div>
-      ) : (
-        <div className="mx-auto max-w-7xl px-4 py-6">
-          {/* ====== LÍNEA: CF / Q ====== */}
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {/* CF */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:bg-neutral-900">
-              <h3 className="mb-3 text-center text-sm text-slate-900 dark:text-slate-100">
-                {filtros.cfMode === "facturacion"
-                  ? "CF Facturación Dscto (SIN IGV)"
-                  : "Cargo Fijo (SIN IGV)"}
-              </h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart
-                  data={chartData}
-                  margin={{ top: 10, right: 20, left: 20, bottom: 10 }} // 👈 aquí el padding
-                >
-                  <CartesianGrid
-                    strokeDasharray="2 2" // 👈 3px de trazo, 3px de espacio
-                    vertical={false} // 👈 oculta las verticales (si solo quieres horizontales)
-                    // 👈 opcional: hace más suaves las líneas
-                  />
-
-                  <XAxis dataKey="mesLabel" className="text-[10px]" />
-                  <Tooltip
-                    content={({ label, payload }) => {
-                      if (!payload || payload.length === 0) return null;
-
-                      return (
-                        <div className=" border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                          {/* Título centrado */}
-                          <div className="mb-1 text-center text-xs font-semibold text-slate-700 dark:text-slate-200">
-                            {payload[0]?.payload?.mes || label}
-                          </div>
-
-                          {/* Valores */}
-                          {payload.map((item, i) => (
-                            <div
-                              key={i}
-                              className="flex justify-between text-xs text-slate-600 dark:text-slate-300"
-                            >
-                              <span className="font-medium">{item.name}:</span>
-                              <span
-                                className="ml-2 font-semibold"
-                                style={{ color: item.stroke }}
-                              >
-                                {item.name === "CF"
-                                  ? fmtMoney(item.value)
-                                  : fmtInt(item.value)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    }}
-                  />
-
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="CF"
-                    stroke="#328708ff"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    isAnimationActive={firstRender.current}
-                    animationDuration={1200}
-                    animationEasing="ease-in-out"
-                    onAnimationEnd={() => {
-                      // desactiva animación para siempre
-                      firstRender.current = false;
-                    }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+        {/* ====== TARJETAS: ESTADO / TIPO VENTA / PDV ====== */}
+        <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+          {/* Torta por estado */}
+          <div className="flex h-[380px] flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:bg-neutral-900">
+            <div className="mb-4 flex flex-col items-center justify-center">
+              <h3 className="mb-3 text-center text-sm text-slate-900 dark:text-slate-100">Distribución por Estado</h3>
             </div>
 
-            {/* Q */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:bg-neutral-900">
-              <h3 className="mb-3 text-center text-sm text-slate-900">
-                Q de Lineas
-              </h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart
-                  data={chartData}
-                  margin={{ top: 10, right: 20, left: 20, bottom: 10 }}
-                >
-                  <CartesianGrid strokeDasharray="2 2" vertical={false} />
-
-                  <XAxis dataKey="mesLabel" className="text-[10px]" />
+            <div className="relative min-h-0 flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 0, right: 12, bottom: 20, left: 12 }}>
+                  <Pie
+                    data={[...distEstado].sort((a, b) => (b?.totalQ ?? 0) - (a?.totalQ ?? 0))}
+                    dataKey="totalQ"
+                    nameKey="_id"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={110}
+                    paddingAngle={1}
+                    cornerRadius={8}
+                    labelLine={false}
+                    isAnimationActive
+                    minAngle={6}
+                    label={false}
+                  >
+                    {distEstado.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="#fff" strokeWidth={2} />
+                    ))}
+                  </Pie>
 
                   <Tooltip
-                    content={({ label, payload }) => {
+                    content={({ payload }) => {
                       if (!payload || payload.length === 0) return null;
+                      const item = payload[0]?.payload;
                       return (
                         <div className="border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                          {/* Título centrado */}
-                          <div className="mb-1 text-center text-xs font-semibold text-slate-700 dark:text-slate-200">
-                            {payload[0]?.payload?.mes || label}
+                          <div className="mb-2 text-center text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            {item?._id}
                           </div>
-
-                          {/* Valores */}
-                          {payload.map((item, i) => (
-                            <div
-                              key={i}
-                              className="flex justify-between text-xs text-slate-600 dark:text-slate-300"
-                            >
-                              <span className="font-medium">{item.name}:</span>
-                              <span
-                                className="ml-2 font-semibold"
-                                style={{ color: item.stroke }}
-                              >
-                                {item.name === "Q"
-                                  ? fmtInt(item.value)
-                                  : item.value}
+                          <div className="flex flex-col items-center gap-1 text-xs text-slate-700 dark:text-slate-300">
+                            <div>
+                              <span className="font-medium">Q: </span>
+                              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                {fmtInt(item?.totalQ)}
                               </span>
                             </div>
-                          ))}
+                            <div>
+                              <span className="font-medium">CF: </span>
+                              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                {fmtMoney(item?.totalCF)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       );
                     }}
                   />
 
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="Q"
-                    stroke="#9c0494ff"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    isAnimationActive={firstRender.current}
-                    animationDuration={1200}
-                    animationEasing="ease-in-out"
-                    onAnimationEnd={() => {
-                      // desactiva animación para siempre
-                      firstRender.current = false;
-                    }}
-                  />
-                </LineChart>
+                  <Legend verticalAlign="bottom" align="center" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, marginTop: 8 }} />
+                </PieChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* ====== TRES TARJETAS ====== */}
-          <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
-            {/* Torta por estado */}
-            <div className="flex h-[380px] flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:bg-neutral-900">
-              {/* Header con título centrado */}
-              <div className="mb-4 flex flex-col items-center justify-center">
-                <h3 className="mb-3 text-center text-sm text-slate-900">
-                  {" "}
-                  Distribución por Estado
-                </h3>
-              </div>
-
-              {/* Contenedor del gráfico */}
-              <div className="relative min-h-0 flex-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart
-                    margin={{ top: 0, right: 12, bottom: 20, left: 12 }}
-                  >
-                    <Pie
-                      data={[...distEstado].sort(
-                        (a, b) => (b?.totalQ ?? 0) - (a?.totalQ ?? 0)
-                      )}
-                      dataKey="totalQ"
-                      nameKey="_id"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={110}
-                      paddingAngle={1} // menos separación
-                      cornerRadius={8} // bordes suaves en los sectores
-                      labelLine={false}
-                      isAnimationActive={true}
-                      minAngle={6}
-                      label={false} // quitamos labels directos
-                    >
-                      {distEstado.map((_, i) => (
-                        <Cell
-                          key={i}
-                          fill={PIE_COLORS[i % PIE_COLORS.length]}
-                          stroke="#fff"
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </Pie>
-
-                    {/* Tooltip elegante y centrado */}
-                    <Tooltip
-                      content={({ payload }) => {
-                        if (!payload || payload.length === 0) return null;
-                        const item = payload[0]?.payload;
-
-                        return (
-                          <div className="border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                            {/* Encabezado */}
-                            <div className="mb-2 text-center text-sm font-semibold text-slate-800 dark:text-slate-100">
-                              {item?._id}
-                            </div>
-
-                            {/* Valores */}
-                            <div className="flex flex-col items-center gap-1 text-xs text-slate-700 dark:text-slate-300">
-                              <div>
-                                <span className="font-medium">Q: </span>
-                                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                                  {fmtInt(item?.totalQ)}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="font-medium">CF: </span>
-                                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                                  {fmtMoney(item?.totalCF)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }}
-                    />
-
-                    {/* Leyenda minimalista */}
-                    <Legend
-                      verticalAlign="bottom"
-                      align="center"
-                      iconType="circle"
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: 11, marginTop: 8 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="flex h-[380px] flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:bg-neutral-900">
-              {/* Header centrado */}
-              <div className="mb-3 text-center">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  {drillTipoV
-                    ? `Productos en "${drillTipoV}"`
-                    : "Distribución por Tipo de Venta"}
-                </h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Líneas (Q) y Cargo Fijo (CF)
-                </p>
-                {drillTipoV && (
-                  <button
-                    className="mt-2 inline-flex items-center rounded-md border px-2 py-1 text-xs
-                 text-slate-600 hover:bg-slate-50 dark:text-slate-300
-                   dark:hover:bg-slate-800"
-                    onClick={() => setDrillTipoV(null)}
-                  >
-                    ← Volver a Tipos de Venta
-                  </button>
-                )}
-              </div>
-              {barLoading ? (
-                <div className="flex flex-1 items-center justify-center">
-                  <Loader variant="inline" message="Cargando…" />
-                </div>
-              ) : (
-                <div className="min-h-0 flex-1">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={barDataSorted}
-                      margin={{ top: 20, right: 12, left: 12, bottom: 25 }}
-                    >
-                      {/* 🎨 Degradado elegante para la barra */}
-                      <defs>
-                        <linearGradient
-                          id="barFill"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop offset="0%" stopColor="#2563eb" />{" "}
-                          {/* azul elegante */}
-                          <stop offset="100%" stopColor="#1e3a8a" />{" "}
-                          {/* azul profundo */}
-                        </linearGradient>
-                      </defs>
-
-                      {/* Grid horizontal con estilo suave */}
-                      <CartesianGrid strokeDasharray="2 2" vertical={false} />
-
-                      {/* Eje X */}
-                      <XAxis
-                        dataKey="name"
-                        interval={0}
-                        tickMargin={12}
-                        tick={({ x, y, payload, index }) => {
-                          const raw = payload?.value ?? "";
-                          const label = abreviarEtiqueta(raw);
-                          const offset = index % 2 === 0 ? 0 : 14;
-                          return (
-                            <text
-                              x={x}
-                              y={y + offset}
-                              dy={16}
-                              textAnchor="middle"
-                              fontSize={10}
-                              fontWeight={600}
-                              fill="#334155"
-                            >
-                              {label}
-                            </text>
-                          );
-                        }}
-                      />
-
-                      {/* Tooltip elegante y centrado */}
-                      <Tooltip
-                        content={({ payload }) => {
-                          if (!payload || payload.length === 0) return null;
-                          const item = payload[0]?.payload;
-                          return (
-                            <div className="text-center border border-slate-200 bg-white px-4 py-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                              {/* Título */}
-                              <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
-                                {item?.name}
-                              </div>
-                              {/* Valor Q */}
-                              <div className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                                Q: {fmtInt(item?.totalQ)}
-                              </div>
-                              {/* Valor CF */}
-                              <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                                CF: {fmtMoney(item?.totalCF)}
-                              </div>
-                            </div>
-                          );
-                        }}
-                      />
-
-                      {/* Una sola barra (Q) */}
-                      <Bar dataKey="totalQ" fill="url(#barFill)" barSize={36}>
-                        {barDataSorted.map((entry, idx) => (
-                          <Cell
-                            key={`cell-${idx}`}
-                            cursor="pointer"
-                            onClick={() => {
-                              // si ya estás en drill, no profundizar más
-                              if (!drillTipoV) setDrillTipoV(entry.name); // entry.name = TIPO_V
-                            }}
-                            // resaltar barra seleccionada
-                            fill={!drillTipoV ? "url(#barFill)" : "#2563eb"}
-                            opacity={
-                              drillTipoV && entry.name !== drillTipoV ? 0.35 : 1
-                            }
-                          />
-                        ))}
-                        <LabelList
-                          dataKey="totalQ"
-                          position="top"
-                          content={({ x, y, value }) => (
-                            <text
-                              x={x + 18}
-                              y={y - 6}
-                              fill="#0f172a"
-                              fontSize={10}
-                              fontWeight={700}
-                              textAnchor="middle"
-                            >
-                              {value}
-                            </text>
-                          )}
-                        />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+          {/* Barras por tipo de venta / drill a productos */}
+          <div className="flex h-[380px] flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:bg-neutral-900">
+            <div className="mb-3 text-center">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {drillTipoV ? `Productos en "${drillTipoV}"` : "Distribución por Tipo de Venta"}
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Líneas (Q) y Cargo Fijo (CF)</p>
+              {drillTipoV && (
+                <button
+                  className="mt-2 inline-flex items-center rounded-md border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                  onClick={() => setDrillTipoV(null)}
+                >
+                  ← Volver a Tipos de Venta
+                </button>
               )}
             </div>
 
-            {/* Dona PDV */}
-            <div className="flex h-[380px] flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:bg-neutral-900">
-              {/* Título centrado */}
-              <div className="mb-3 text-center">
-                <h3 className="mb-3 text-center text-sm text-slate-900">
-                  {" "}
-                  PDV vs No PDV
-                </h3>
+            {barLoading ? (
+              <div className="flex flex-1 items-center justify-center">
+                <Loader variant="inline" message="Cargando…" />
               </div>
-
-              {/* Donut */}
+            ) : (
               <div className="min-h-0 flex-1">
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart
-                    margin={{ top: 0, right: 12, bottom: 12, left: 12 }}
-                  >
-                    <Pie
-                      data={distPDV}
-                      dataKey="totalQ"
-                      nameKey="_id"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50} // más ancho, sobrio
-                      outerRadius={110}
-                      paddingAngle={1} // menos separación entre segmentos
-                      cornerRadius={8} // bordes suaves
-                      labelLine={false}
-                      label={false} // quitamos labels directos
-                      isAnimationActive={true}
-                      minAngle={6}
-                    >
-                      {distPDV.map((_, i) => (
-                        <Cell
-                          key={i}
-                          fill={PIE_COLORS[i % PIE_COLORS.length]}
-                          stroke="#fff"
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </Pie>
+                  <BarChart data={barDataSorted} margin={{ top: 20, right: 12, left: 12, bottom: 25 }}>
+                    <defs>
+                      <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2563eb" />
+                        <stop offset="100%" stopColor="#1e3a8a" />
+                      </linearGradient>
+                    </defs>
 
-                    {/* Tooltip elegante y recto */}
-                    <Tooltip
-                      content={({ payload }) => {
-                        if (!payload || payload.length === 0) return null;
-                        const item = payload[0]?.payload;
+                    <CartesianGrid strokeDasharray="2 2" vertical={false} />
+
+                    <XAxis
+                      dataKey="name"
+                      interval={0}
+                      tickMargin={12}
+                      tick={({ x, y, payload, index }) => {
+                        const raw = payload?.value ?? "";
+                        const label = abreviarEtiqueta(raw);
+                        const offset = index % 2 === 0 ? 0 : 14;
                         return (
-                          <div className="border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                            {/* Encabezado */}
-                            <div className="mb-2 text-center text-sm font-semibold text-slate-800 dark:text-slate-100">
-                              {item?._id}
-                            </div>
-
-                            {/* Valores */}
-                            <div className="flex flex-col items-center gap-1 text-xs text-slate-700 dark:text-slate-300">
-                              <div>
-                                <span className="font-medium">Q: </span>
-                                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                                  {fmtInt(item?.totalQ)}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="font-medium">CF: </span>
-                                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                                  {fmtMoney(item?.totalCF)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }}
-                    />
-
-                    {/* Leyenda minimalista */}
-                    <Legend
-                      verticalAlign="bottom"
-                      align="center"
-                      iconType="circle"
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: 11, marginTop: 8 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-
-          {/* ====== COMPARATIVA + MTD/YTD ====== */}
-          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Comparativa (1 col) */}
-            <div className="col-span-1 flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-md dark:bg-neutral-900">
-              {/* Header */}
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="w-full text-[11px] font-semibold uppercase tracking-wide text-center text-slate-900 dark:text-slate-100">
-                  Comparativa
-                </h3>
-
-                <div className="flex items-center gap-1.5">
-                  {["anual", "trimestre", "mes"].map((k) => (
-                    <button
-                      key={k}
-                      onClick={() => setTipoVistaComparativa(k)}
-                      aria-pressed={tipoVistaComparativa === k}
-                      className={[
-                        "rounded px-2 py-1 text-[11px] transition",
-                        tipoVistaComparativa === k
-                          ? "bg-blue-600 text-white shadow-sm"
-                          : "border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-neutral-800",
-                      ].join(" ")}
-                    >
-                      {k === "anual"
-                        ? "Anual"
-                        : k === "trimestre"
-                        ? "Trim."
-                        : "Mes"}
-                    </button>
-                  ))}
-
-                  {tipoVistaComparativa === "mes" && (
-                    <select
-                      value={mesComparativa}
-                      onChange={(e) =>
-                        setMesComparativa(Number(e.target.value))
-                      }
-                      className="rounded border border-slate-300 px-2 py-1 text-[11px] dark:border-slate-700 dark:bg-neutral-900 dark:text-slate-200"
-                    >
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                        <option key={m} value={m}>
-                          {new Date(2025, m - 1).toLocaleString("es-PE", {
-                            month: "long",
-                          })}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-
-                  {tipoVistaComparativa === "trimestre" && (
-                    <select
-                      value={trimestreComparativa}
-                      onChange={(e) =>
-                        setTrimestreComparativa(Number(e.target.value))
-                      }
-                      className="rounded border border-slate-300 px-2 py-1 text-[11px] dark:border-slate-700 dark:bg-neutral-900 dark:text-slate-200"
-                    >
-                      <option value={1}>1° Trimestre</option>
-                      <option value={2}>2° Trimestre</option>
-                      <option value={3}>3° Trimestre</option>
-                      <option value={4}>4° Trimestre</option>
-                    </select>
-                  )}
-                </div>
-              </div>
-
-              {/* Chart (más bajo) */}
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart
-                  data={[...dataComparativa].sort((a, b) =>
-                    a.name.localeCompare(b.name)
-                  )}
-                  margin={{ top: 8, right: 8, left: 8, bottom: 12 }}
-                >
-                  <defs>
-                    <linearGradient id="barPast" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#f59e0b" />
-                      <stop offset="100%" stopColor="#b45309" />
-                    </linearGradient>
-                    <linearGradient id="barActual" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#3b82f6" />
-                      <stop offset="100%" stopColor="#1e3a8a" />
-                    </linearGradient>
-                  </defs>
-
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 10, fontWeight: 600, fill: "#334155" }}
-                  />
-
-                  <Tooltip
-                    content={({ label, payload = [] }) => {
-                      if (!payload.length) return null;
-                      const p = payload.reduce((acc, it) => {
-                        acc[it.dataKey] = it.value;
-                        return acc;
-                      }, {});
-                      const vari = payload.find((it) => it.dataKey === "actual")
-                        ?.payload?.variacion;
-                      const n =
-                        typeof vari === "string"
-                          ? parseFloat(vari)
-                          : Number(vari);
-                      const sign = Number.isFinite(n) ? (n > 0 ? "+" : "") : "";
-                      const textVar = Number.isFinite(n)
-                        ? `${sign}${n.toFixed(1)}%`
-                        : vari ?? "—";
-                      const colorVar = Number.isFinite(n)
-                        ? n >= 0
-                          ? "#16a34a"
-                          : "#dc2626"
-                        : "#334155";
-
-                      return (
-                        <div className="text-center border border-slate-200 bg-white px-3 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
+                          <text x={x} y={y + offset} dy={16} textAnchor="middle" fontSize={10} fontWeight={600} fill="#334155">
                             {label}
-                          </div>
-                          <div className="text-[11px] text-slate-600 dark:text-slate-300">
-                            Año Pasado: <b>{p.pasado ?? "—"}</b>
-                          </div>
-                          <div className="text-[11px] text-slate-600 dark:text-slate-300">
-                            Año Actual: <b>{p.actual ?? "—"}</b>
-                          </div>
-                          <div
-                            className="mt-0.5 text-[11px] font-semibold"
-                            style={{ color: colorVar }}
-                          >
-                            Variación: {textVar}
-                          </div>
-                        </div>
-                      );
-                    }}
-                  />
-
-                  <Legend wrapperStyle={{ fontSize: 10, marginTop: 2 }} />
-
-                  <Bar
-                    dataKey="pasado"
-                    fill="url(#barPast)"
-                    name="Año Pasado"
-                    barSize={40}
-                  />
-                  <Bar
-                    dataKey="actual"
-                    fill="url(#barActual)"
-                    name="Año Actual"
-                    barSize={40}
-                  >
-                    <LabelList
-                      dataKey="variacion"
-                      position="top"
-                      content={({ x, y, value }) => {
-                        const n =
-                          typeof value === "string"
-                            ? parseFloat(value)
-                            : Number(value);
-                        const sign = Number.isFinite(n)
-                          ? n > 0
-                            ? "+"
-                            : ""
-                          : "";
-                        const text = Number.isFinite(n)
-                          ? `${sign}${n.toFixed(1)}%`
-                          : value ?? "";
-                        const color = Number.isFinite(n)
-                          ? n >= 0
-                            ? "#16a34a"
-                            : "#dc2626"
-                          : "#334155";
-                        return (
-                          <text
-                            x={x + 12}
-                            y={y - 6}
-                            fill={color}
-                            fontSize={10}
-                            fontWeight={700}
-                            textAnchor="middle"
-                          >
-                            {text}
                           </text>
                         );
                       }}
                     />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+
+                    <Tooltip
+                      content={({ payload }) => {
+                        if (!payload || payload.length === 0) return null;
+                        const item = payload[0]?.payload;
+                        return (
+                          <div className="text-center border border-slate-200 bg-white px-4 py-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
+                              {item?.name}
+                            </div>
+                            <div className="text-sm font-semibold text-blue-600 dark:text-blue-400">Q: {fmtInt(item?.totalQ)}</div>
+                            <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">CF: {fmtMoney(item?.totalCF)}</div>
+                          </div>
+                        );
+                      }}
+                    />
+
+                    <Bar dataKey="totalQ" fill="url(#barFill)" barSize={36}>
+                      {barDataSorted.map((entry, idx) => (
+                        <Cell
+                          key={`cell-${idx}`}
+                          cursor="pointer"
+                          onClick={() => {
+                            if (!drillTipoV) setDrillTipoV(entry.name);
+                          }}
+                          fill={!drillTipoV ? "url(#barFill)" : "#2563eb"}
+                          opacity={drillTipoV && entry.name !== drillTipoV ? 0.35 : 1}
+                        />
+                      ))}
+                      <LabelList
+                        dataKey="totalQ"
+                        position="top"
+                        content={({ x, y, value }) => (
+                          <text x={x + 18} y={y - 6} fill="#0f172a" fontSize={10} fontWeight={700} textAnchor="middle">
+                            {value}
+                          </text>
+                        )}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* Dona PDV */}
+          <div className="flex h-[380px] flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:bg-neutral-900">
+            <div className="mb-3 text-center">
+              <h3 className="mb-3 text-center text-sm text-slate-900 dark:text-slate-100">PDV vs No PDV</h3>
             </div>
 
-            {/* Mes vs YTD (2 cols) */}
-            <div className="col-span-1 flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-md dark:bg-neutral-900 lg:col-span-2">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="w-full text-[13px] text-center font-semibold tracking-wide text-slate-900">
-                  Proyección
-                </h3>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setVista("mes")}
-                    className={`rounded px-2 py-1 text-[11px] ${
-                      vista === "mes"
-                        ? "bg-emerald-600 text-white"
-                        : "border border-slate-300 text-slate-700 hover:bg-slate-50"
-                    }`}
+            <div className="min-h-0 flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 0, right: 12, bottom: 12, left: 12 }}>
+                  <Pie
+                    data={distPDV}
+                    dataKey="totalQ"
+                    nameKey="_id"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={110}
+                    paddingAngle={1}
+                    cornerRadius={8}
+                    labelLine={false}
+                    label={false}
+                    isAnimationActive
+                    minAngle={6}
                   >
-                    MTD
-                  </button>
-                  <button
-                    onClick={() => setVista("ytd")}
-                    className={`rounded px-2 py-1 text-[11px] ${
-                      vista === "ytd"
-                        ? "bg-emerald-600 text-white"
-                        : "border border-slate-300 text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    YTD
-                  </button>
-                </div>
-              </div>
+                    {distPDV.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="#fff" strokeWidth={2} />
+                    ))}
+                  </Pie>
 
-              {(() => {
-                const metasMes = { Q: 350, CF: 12000 }; // metas MTD
-
-                return (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <ComposedChart
-                      layout="vertical"
-                      data={[
-                        {
-                          name: "Q",
-                          actual:
-                            vista === "mes"
-                              ? dataMesVsYTD?.mes?.Q
-                              : dataMesVsYTD?.ytd?.Q,
-                          meta: vista === "mes" ? metasMes.Q : proyAnual?.Q,
-                          proy: vista === "mes" ? proyMes?.Q : proyAnual?.Q,
-                        },
-                        {
-                          name: "CF",
-                          actual:
-                            vista === "mes"
-                              ? dataMesVsYTD?.mes?.CF
-                              : dataMesVsYTD?.ytd?.CF,
-                          meta: vista === "mes" ? metasMes.CF : proyAnual?.CF,
-                          proy: vista === "mes" ? proyMes?.CF : proyAnual?.CF,
-                        },
-                      ]}
-                      margin={{ top: 0, right: 24, left: 8, bottom: 0 }}
-                      barCategoryGap="35%"
-                    >
-                      <CartesianGrid
-                        strokeDasharray="2 2" // 👈 punteado
-                        horizontal={true} // 👈 activa las horizontales
-                        vertical={false} // 👈 desactiva las verticales
-                        stroke="#000000ff" // 👈 color gris suave
-                      />
-
-                      <XAxis
-                        type="number"
-                        domain={[0, (dataMax) => Math.ceil(dataMax * 1.12)]}
-                        tick={false}
-                        axisLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        tick={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          fill: "#334155",
-                        }}
-                        axisLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
-                      />
-
-                      <Tooltip
-                        content={({ payload }) => {
-                          if (!payload || payload.length === 0) return null;
-                          const item = payload[0]?.payload;
-                          const isQ = item.name === "Q";
-                          return (
-                            <div className="border border-slate-200 bg-white px-3 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900 text-[11px]">
-                              <div className="mb-1 text-center font-semibold text-slate-800 dark:text-slate-100">
-                                {item.name}
-                              </div>
-                              <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                                <span>Actual:</span>
-                                <span className="font-semibold">
-                                  {isQ
-                                    ? fmtInt(item.actual)
-                                    : fmtMoney(item.actual)}
-                                </span>
-                              </div>
-                              {item.proy && (
-                                <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                                  <span>Proyección:</span>
-                                  <span className="font-semibold text-amber-600">
-                                    {isQ
-                                      ? fmtInt(item.proy)
-                                      : fmtMoney(item.proy)}
-                                  </span>
-                                </div>
-                              )}
+                  <Tooltip
+                    content={({ payload }) => {
+                      if (!payload || payload.length === 0) return null;
+                      const item = payload[0]?.payload;
+                      return (
+                        <div className="border border-slate-200 bg-white px-4 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                          <div className="mb-2 text-center text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            {item?._id}
+                          </div>
+                          <div className="flex flex-col items-center gap-1 text-xs text-slate-700 dark:text-slate-300">
+                            <div>
+                              <span className="font-medium">Q: </span>
+                              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                {fmtInt(item?.totalQ)}
+                              </span>
                             </div>
-                          );
-                        }}
-                      />
+                            <div>
+                              <span className="font-medium">CF: </span>
+                              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                {fmtMoney(item?.totalCF)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
 
-                      <Bar dataKey="actual" barSize={40}>
-                        {["Q", "CF"].map((key, i) => (
-                          <Cell
-                            key={i}
-                            fill={key === "Q" ? "#16a34a" : "#2563eb"}
-                          />
-                        ))}
-                      </Bar>
-                      {/* Líneas de referencia (proyecciones) */}
-                      {["Q", "CF"].map((key) => (
-                        <React.Fragment key={key}>
-                          {vista === "mes" &&
-                            typeof proyMes?.[key] === "number" && (
-                              <ReferenceLine
-                                x={proyMes[key]}
-                                stroke={key === "Q" ? "#f59e0b" : "#10b981"}
-                                strokeWidth={2}
-                                strokeDasharray="4 4"
-                                label={{
-                                  value: `Proy ${key}`,
-                                  position: "right",
-                                  fill: key === "Q" ? "#b45309" : "#0f766e",
-                                  fontSize: 10,
-                                }}
-                              />
-                            )}
-                          {vista === "ytd" &&
-                            typeof proyAnual?.[key] === "number" && (
-                              <ReferenceLine
-                                x={proyAnual[key]}
-                                stroke={key === "Q" ? "#f59e0b" : "#10b981"}
-                                strokeWidth={2}
-                                strokeDasharray="4 4"
-                                label={{
-                                  value: `Proy ${key}`,
-                                  position: "right",
-                                  fill: key === "Q" ? "#b45309" : "#0f766e",
-                                  fontSize: 10,
-                                }}
-                              />
-                            )}
-                        </React.Fragment>
-                      ))}
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                );
-              })()}
+                  <Legend verticalAlign="bottom" align="center" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, marginTop: 8 }} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
+
+        {/* ====== COMPARATIVA + MTD/YTD ====== */}
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Comparativa (1 col) */}
+          <div className="col-span-1 flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-md dark:bg-neutral-900">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="w-full text-[11px] font-semibold uppercase tracking-wide text-center text-slate-900 dark:text-slate-100">
+                Comparativa
+              </h3>
+
+              <div className="flex items-center gap-1.5">
+                {["anual", "trimestre", "mes"].map((k) => (
+                  <button
+                    key={k}
+                    onClick={() => setTipoVistaComparativa(k)}
+                    aria-pressed={tipoVistaComparativa === k}
+                    className={[
+                      "rounded px-2 py-1 text-[11px] transition",
+                      tipoVistaComparativa === k
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-neutral-800",
+                    ].join(" ")}
+                  >
+                    {k === "anual" ? "Anual" : k === "trimestre" ? "Trim." : "Mes"}
+                  </button>
+                ))}
+
+                {tipoVistaComparativa === "mes" && (
+                  <select
+                    value={mesComparativa}
+                    onChange={(e) => setMesComparativa(Number(e.target.value))}
+                    className="rounded border border-slate-300 px-2 py-1 text-[11px] dark:border-slate-700 dark:bg-neutral-900 dark:text-slate-200"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <option key={m} value={m}>
+                        {new Date(2025, m - 1).toLocaleString("es-PE", { month: "long" })}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {tipoVistaComparativa === "trimestre" && (
+                  <select
+                    value={trimestreComparativa}
+                    onChange={(e) => setTrimestreComparativa(Number(e.target.value))}
+                    className="rounded border border-slate-300 px-2 py-1 text-[11px] dark:border-slate-700 dark:bg-neutral-900 dark:text-slate-200"
+                  >
+                    <option value={1}>1° Trimestre</option>
+                    <option value={2}>2° Trimestre</option>
+                    <option value={3}>3° Trimestre</option>
+                    <option value={4}>4° Trimestre</option>
+                  </select>
+                )}
+              </div>
+            </div>
+
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart
+                data={[...dataComparativa].sort((a, b) => a.name.localeCompare(b.name))}
+                margin={{ top: 8, right: 8, left: 8, bottom: 12 }}
+              >
+                <defs>
+                  <linearGradient id="barPast" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f59e0b" />
+                    <stop offset="100%" stopColor="#b45309" />
+                  </linearGradient>
+                  <linearGradient id="barActual" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="100%" stopColor="#1e3a8a" />
+                  </linearGradient>
+                </defs>
+
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 600, fill: "#334155" }} />
+
+                <Tooltip
+                  content={({ label, payload = [] }) => {
+                    if (!payload.length) return null;
+                    const p = payload.reduce((acc, it) => {
+                      acc[it.dataKey] = it.value;
+                      return acc;
+                    }, {});
+                    const vari = payload.find((it) => it.dataKey === "actual")?.payload?.variacion;
+                    const n = typeof vari === "string" ? parseFloat(vari) : Number(vari);
+                    const sign = Number.isFinite(n) ? (n > 0 ? "+" : "") : "";
+                    const textVar = Number.isFinite(n) ? `${sign}${n.toFixed(1)}%` : vari ?? "—";
+                    const colorVar = Number.isFinite(n) ? (n >= 0 ? "#16a34a" : "#dc2626") : "#334155";
+
+                    return (
+                      <div className="text-center border border-slate-200 bg-white px-3 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                        <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100">
+                          {label}
+                        </div>
+                        <div className="text-[11px] text-slate-600 dark:text-slate-300">
+                          Año Pasado: <b>{p.pasado ?? "—"}</b>
+                        </div>
+                        <div className="text-[11px] text-slate-600 dark:text-slate-300">
+                          Año Actual: <b>{p.actual ?? "—"}</b>
+                        </div>
+                        <div className="mt-0.5 text-[11px] font-semibold" style={{ color: colorVar }}>
+                          Variación: {textVar}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+
+                <Legend wrapperStyle={{ fontSize: 10, marginTop: 2 }} />
+
+                <Bar dataKey="pasado" fill="url(#barPast)" name="Año Pasado" barSize={40} />
+                <Bar dataKey="actual" fill="url(#barActual)" name="Año Actual" barSize={40}>
+                  <LabelList
+                    dataKey="variacion"
+                    position="top"
+                    content={({ x, y, value }) => {
+                      const n = typeof value === "string" ? parseFloat(value) : Number(value);
+                      const sign = Number.isFinite(n) ? (n > 0 ? "+" : "") : "";
+                      const text = Number.isFinite(n) ? `${sign}${n.toFixed(1)}%` : value ?? "";
+                      const color = Number.isFinite(n) ? (n >= 0 ? "#16a34a" : "#dc2626") : "#334155";
+                      return (
+                        <text x={x + 12} y={y - 6} fill={color} fontSize={10} fontWeight={700} textAnchor="middle">
+                          {text}
+                        </text>
+                      );
+                    }}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Mes vs YTD (2 cols) */}
+          <div className="col-span-1 flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-md dark:bg-neutral-900 lg:col-span-2">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="w-full text-[13px] text-center font-semibold tracking-wide text-slate-900 dark:text-slate-100">
+                Proyección
+              </h3>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setVista("mes")}
+                  className={`rounded px-2 py-1 text-[11px] ${
+                    vista === "mes" ? "bg-emerald-600 text-white" : "border border-slate-300 text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  MTD
+                </button>
+                <button
+                  onClick={() => setVista("ytd")}
+                  className={`rounded px-2 py-1 text-[11px] ${
+                    vista === "ytd" ? "bg-emerald-600 text-white" : "border border-slate-300 text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  YTD
+                </button>
+              </div>
+            </div>
+
+            {(() => {
+              const metasMes = { Q: 350, CF: 12000 }; // metas MTD
+
+              return (
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart
+                    layout="vertical"
+                    data={[
+                      {
+                        name: "Q",
+                        actual: vista === "mes" ? dataMesVsYTD?.mes?.Q : dataMesVsYTD?.ytd?.Q,
+                        meta: vista === "mes" ? metasMes.Q : proyAnual?.Q,
+                        proy: vista === "mes" ? proyMes?.Q : proyAnual?.Q,
+                      },
+                      {
+                        name: "CF",
+                        actual: vista === "mes" ? dataMesVsYTD?.mes?.CF : dataMesVsYTD?.ytd?.CF,
+                        meta: vista === "mes" ? metasMes.CF : proyAnual?.CF,
+                        proy: vista === "mes" ? proyMes?.CF : proyAnual?.CF,
+                      },
+                    ]}
+                    margin={{ top: 0, right: 24, left: 8, bottom: 0 }}
+                    barCategoryGap="35%"
+                  >
+                    <CartesianGrid strokeDasharray="2 2" horizontal vertical={false} stroke="#000000ff" />
+                    <XAxis type="number" domain={[0, (dataMax) => Math.ceil(dataMax * 1.12)]} tick={false} axisLine={{ stroke: "#cbd5e1", strokeWidth: 1 }} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={{ fontSize: 12, fontWeight: 600, fill: "#334155" }}
+                      axisLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
+                    />
+
+                    <Tooltip
+                      content={({ payload }) => {
+                        if (!payload || payload.length === 0) return null;
+                        const item = payload[0]?.payload;
+                        const isQ = item.name === "Q";
+                        return (
+                          <div className="border border-slate-200 bg-white px-3 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900 text-[11px]">
+                            <div className="mb-1 text-center font-semibold text-slate-800 dark:text-slate-100">{item.name}</div>
+                            <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                              <span>Actual:</span>
+                              <span className="font-semibold">{isQ ? fmtInt(item.actual) : fmtMoney(item.actual)}</span>
+                            </div>
+                            {item.proy && (
+                              <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                <span>Proyección:</span>
+                                <span className="font-semibold text-amber-600">
+                                  {isQ ? fmtInt(item.proy) : fmtMoney(item.proy)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }}
+                    />
+
+                    <Bar dataKey="actual" barSize={40}>
+                      {["Q", "CF"].map((key, i) => (
+                        <Cell key={i} fill={key === "Q" ? "#16a34a" : "#2563eb"} />
+                      ))}
+                    </Bar>
+
+                    {/* Líneas de referencia (proyecciones) */}
+                    {["Q", "CF"].map((key) => (
+                      <React.Fragment key={key}>
+                        {vista === "mes" && typeof proyMes?.[key] === "number" && (
+                          <ReferenceLine
+                            x={proyMes[key]}
+                            stroke={key === "Q" ? "#f59e0b" : "#10b981"}
+                            strokeWidth={2}
+                            strokeDasharray="4 4"
+                            label={{ value: `Proy ${key}`, position: "right", fill: key === "Q" ? "#b45309" : "#0f766e", fontSize: 10 }}
+                          />
+                        )}
+                        {vista === "ytd" && typeof proyAnual?.[key] === "number" && (
+                          <ReferenceLine
+                            x={proyAnual[key]}
+                            stroke={key === "Q" ? "#f59e0b" : "#10b981"}
+                            strokeWidth={2}
+                            strokeDasharray="4 4"
+                            label={{ value: `Proy ${key}`, position: "right", fill: key === "Q" ? "#b45309" : "#0f766e", fontSize: 10 }}
+                          />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+);
+
 }

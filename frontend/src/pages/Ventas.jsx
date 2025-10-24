@@ -6,8 +6,6 @@ import FiltrosWrapper from "../components/FiltrosWrapper";
 import { Loader } from "../components/Loader";
 import Swal from "sweetalert2";
 
-
-
 // 👆 solo sistemas puede crear/editar/eliminar
 
 /* Construye params con arrays como parámetros repetidos */
@@ -189,8 +187,6 @@ const COL_MIN_W = {
 // fallback si falta alguna
 const mw = (key) => COL_MIN_W[key] || "min-w-[140px] whitespace-nowrap";
 
-
-
 const ROLES_IDS = {
   sistemas: "68a4f22d27e6abe98157a82c",
   backoffice: "68a4f22d27e6abe98157a830",
@@ -227,8 +223,7 @@ export default function Ventas() {
 
   const [searchTerm, setSearchTerm] = useState("");
 
-
-   const canManageVentas = React.useMemo(() => {
+  const canManageVentas = React.useMemo(() => {
     try {
       const raw = localStorage.getItem("user");
       const u = raw ? JSON.parse(raw) : null;
@@ -480,7 +475,7 @@ export default function Ventas() {
   }, [filtros, searchTerm]); // 👈 agrega searchTerm en dependencias
 
   return (
-    <div className="min-h-[calc(100vh-88px)]  bg-[#ebe8e8] dark:bg-slate-950 p-4 md:p-6">
+    <div className="min-h-[calc(100vh-88px)]  bg-[#F2F0F0] dark:bg-slate-950 p-4 md:p-6">
       {" "}
       {/* bg-zinc-100 */}
       {loading && (
@@ -585,8 +580,8 @@ export default function Ventas() {
               onClick={handleExport}
               disabled={loading || exporting}
               title="Exportar Excel"
-              className="min-w-[130px] h-10 inline-flex items-center justify-center gap-2 rounded-md
-      border border-emerald-700 bg-emerald-800 text-xs  text-white shadow-sm
+              className="min-w-[130px] h-12 inline-flex items-center justify-center gap-2 rounded-md
+      border border-black bg-emerald-800 text-xs  text-white shadow-sm
       hover:bg-emerald-900 transition disabled:opacity-50 disabled:cursor-not-allowed
       dark:border-emerald-800 dark:bg-emerald-900 dark:hover:bg-emerald-800"
             >
@@ -604,7 +599,7 @@ export default function Ventas() {
                   setSearchTerm(term);
                   fetchVentas(true, term);
                 }}
-                className="h-10 px-3 rounded-md border border-slate-300 text-xs shadow-sm
+                className="h-12 px-3 rounded-md border border-black text-xs shadow-sm
         focus:outline-none focus:ring-2 focus:ring-purple-500 text-center
         dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200"
               />
@@ -683,7 +678,7 @@ export default function Ventas() {
         <div className="relative overflow-x-auto">
           <table className="table-auto w-full text-[12px]">
             <thead className="sticky top-0 z-10 bg-white text-center dark:bg-slate-900">
-              <tr className="h-10">
+              <tr className="h-12">
                 {/* THEAD: columna de selección */}
                 <th className="w-[56px] border-b px-0 py-2 text-center text-[11px] font-bold tracking-wide text-slate-600">
                   <div className="flex items-center justify-center pl-3">
@@ -721,7 +716,7 @@ export default function Ventas() {
                   return (
                     <tr
                       key={v._id || idx}
-                      className={`h-10 ${idx % 2 ? "bg-slate-50" : "bg-white"}`}
+                      className={`h-12 ${idx % 2 ? "bg-slate-50" : "bg-white"}`}
                     >
                       {/* Columna de selección (reemplaza el <td> ... </td> que tenías) */}
                       <td className="w-[56px] px-0">
