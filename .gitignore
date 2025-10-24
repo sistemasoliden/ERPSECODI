@@ -9,12 +9,12 @@ out/
 **/dist/
 **/build/
 
-# === Archivos de entorno ===
-.env
-.env.local
-.env.development
-.env.production
-**/.env
+# === Archivos de entorno (NO ignorar .env) ===
+# .env
+# .env.local
+# .env.development
+# .env.production
+# **/.env
 
 # === Logs ===
 npm-debug.log*
