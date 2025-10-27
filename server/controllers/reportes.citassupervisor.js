@@ -49,14 +49,18 @@ function buildCommercialRoleQuery() {
 // ✅ Mantener filtro de usuarios ACTIVO (no se toca)
 function withActiveStatus(base = {}) {
   return {
-    ...base,
-    $or: [
-      { estadoUsuario: ACTIVE_STATUS_ID },
-      { estadoUsuario: String(ACTIVE_STATUS_ID) },
-      { "estadoUsuario._id": ACTIVE_STATUS_ID },
-      { "estadoUsuario._id": String(ACTIVE_STATUS_ID) },
-      { "estadoUsuario.nombre": "Activo" },
-      { "estadoUsuario.slug": "activo" },
+    $and: [
+      base,
+      {
+        $or: [
+          { estadoUsuario: ACTIVE_STATUS_ID },
+          { estadoUsuario: String(ACTIVE_STATUS_ID) },
+          { "estadoUsuario._id": ACTIVE_STATUS_ID },
+          { "estadoUsuario._id": String(ACTIVE_STATUS_ID) },
+          { "estadoUsuario.nombre": "Activo" },
+          { "estadoUsuario.slug": "activo" },
+        ],
+      },
     ],
   };
 }

@@ -76,17 +76,22 @@ const ACTIVE_STATUS_ID = new mongoose.Types.ObjectId(
 ); // _id "Activo"
 function withActiveStatus(base = {}) {
   return {
-    ...base,
-    $or: [
-      { estadoUsuario: ACTIVE_STATUS_ID },
-      { estadoUsuario: String(ACTIVE_STATUS_ID) },
-      { "estadoUsuario._id": ACTIVE_STATUS_ID },
-      { "estadoUsuario._id": String(ACTIVE_STATUS_ID) },
-      { "estadoUsuario.nombre": "Activo" },
-      { "estadoUsuario.slug": "activo" },
+    $and: [
+      base,
+      {
+        $or: [
+          { estadoUsuario: ACTIVE_STATUS_ID },
+          { estadoUsuario: String(ACTIVE_STATUS_ID) },
+          { "estadoUsuario._id": ACTIVE_STATUS_ID },
+          { "estadoUsuario._id": String(ACTIVE_STATUS_ID) },
+          { "estadoUsuario.nombre": "Activo" },
+          { "estadoUsuario.slug": "activo" },
+        ],
+      },
     ],
   };
 }
+
 
 /* ==================== Controller ==================== */
 export async function distribucionPorEjecutivoOportunidades(req, res) {
