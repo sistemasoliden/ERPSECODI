@@ -337,6 +337,9 @@ export default function ReportTipificacionSupervisor() {
   const [dist, setDist] = useState([]);
   const [bars, setBars] = useState([]); // [{ ejecutivoId, ejecutivo, total }]
   const [error, setError] = useState("");
+  // Efectividad (Base vs Oportunidades)
+  const [effRows, setEffRows] = useState([]);
+  const [loadingEff, setLoadingEff] = useState(false);
 
   // 1) barras + miembros del equipo
   const loadBarsAndMembers = async () => {
@@ -415,10 +418,35 @@ export default function ReportTipificacionSupervisor() {
     }
   };
 
+  const loadEfectividad = async () => {
+    setLoadingEff(true);
+    try {
+      const base = from && to ? { from, to } : { month, year };
+      const params = { ...base, userIds: selectedIds };
+      const { data } = await api.get("/reportes/tipificacion/efectividad", {
+        ...authHeader,
+        params,
+        paramsSerializer: (p) => qs.stringify(p, { arrayFormat: "brackets" }),
+      });
+      setEffRows(Array.isArray(data?.items) ? data.items : []);
+    } catch (e) {
+      console.error("[Supervisor Tipificación] efectividad error:", e);
+      setEffRows([]);
+    } finally {
+      setLoadingEff(false);
+    }
+  };
+
   // Primera carga
   useEffect(() => {
     loadBarsAndMembers(); /* eslint-disable-next-line */
   }, [from, to, month, year, token]);
+
+  useEffect(() => {
+    if (!members.length) return;
+    loadEfectividad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, month, year, token, members.length, selectedIds.join(",")]);
 
   // Recalcular serie/dona cuando cambie selección o rango
   useEffect(() => {
@@ -673,8 +701,8 @@ export default function ReportTipificacionSupervisor() {
       </div>
 
       {/* Barras por ejecutivo (bonitas / gradiente) */}
-      <div className="mt-3">
-        <Box title="Tipificaciones por Ejecutivo " className="lg:col-span-3">
+      <div className="mt-3 grid grid-cols-1 lg:grid-cols-[1.2fr_1.8fr] gap-3">
+        <Box title="Tipificaciones por Ejecutivo " >
           {!bars.length ? (
             <Empty />
           ) : (
@@ -750,6 +778,93 @@ export default function ReportTipificacionSupervisor() {
             </div>
           )}
         </Box>
+
+        {/* Tabla de Efectividad */}
+        <Box title="Efectividad de tipificación → oportunidades">
+  {loadingEff ? (
+    <Empty text="Cargando…" />
+  ) : !effRows.length ? (
+    <Empty text="Sin datos para el filtro seleccionado" />
+  ) : (
+    <div className="h-[380px] relative overflow-y-auto overflow-x-hidden px-7">
+      <table className="w-full mt-2 table-auto border border-gray-200">
+        <colgroup>
+          <col className="w-[14rem]" /> {/* ~224px: Ejecutivo */}
+          <col className="w-[7rem]" />  {/* ~112px: Base */}
+          <col className="w-[9rem]" />  {/* ~144px: Oportunidades */}
+          <col className="w-[10rem]" /> {/* ~160px: Efectividad */}
+        </colgroup>
+
+        <thead className="sticky top-0 z-10 bg-gray-800 text-white text-[11px] capitalize">
+          <tr>
+            <th className="px-2 py-3 text-center">Ejecutivo</th>
+            <th className="px-2 py-3 text-center">Base</th>
+            <th className="px-2 py-3 text-center">Oportunidades de Negociacion</th>
+            <th className="px-2 py-3 text-center">Efectividad</th>
+          </tr>
+        </thead>
+
+        <tbody className="text-[11px]">
+          {effRows.map((r, idx) => {
+            const base = Number(r.base) || 0;
+            const ops = Number(r.oportunidades) || 0;
+            const pct = base > 0 ? Math.round((ops * 100) / base) : 0;
+            return (
+              <tr
+                key={r.ejecutivoId || idx}
+                className={idx % 2 ? "bg-[#fafafa]" : "bg-white"}
+              >
+                <td className="px-3 py-2 border-b border-gray-200 text-center  font-bold text-slate-800">
+                  <div className="truncate" title={r.ejecutivo}>
+                    {r.ejecutivo}
+                  </div>
+                </td>
+                <td className="px-3 py-2 border-b border-gray-200 text-center text-orange-600 font-semibold">
+                  {formatNumber(base)}
+                </td>
+                <td className="px-3 py-2 border-b border-gray-200 text-center text-slate-900 font-semibold">
+                  {formatNumber(ops)}
+                </td>
+                <td className="px-3 py-2 border-b border-gray-200">
+                  <div className="text-center font-semibold text-slate-900">
+                    {pct}%
+                  </div>
+                  <div className="mt-1 h-3 w-full rounded bg-gray-200">
+                    <div
+                      className="h-3 rounded bg-emerald-700"
+                      style={{ width: `${Math.min(100, pct)}%` }}
+                    />
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+
+        <tfoot>
+          <tr className="bg-gray-100 font-bold text-slate-800">
+            <td className="px-3 py-2 text-[10px]">Totales</td>
+            <td className="px-3 py-2 text-center text-[10px]">
+              {formatNumber(
+                effRows.reduce((a, r) => a + (Number(r.base) || 0), 0)
+              )}
+            </td>
+            <td className="px-3 py-2 text-center text-[10px]">
+              {formatNumber(
+                effRows.reduce(
+                  (a, r) => a + (Number(r.oportunidades) || 0),
+                  0
+                )
+              )}
+            </td>
+            <td className="px-3 py-2 text-center text-[10px]">—</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )}
+</Box>
+
       </div>
 
       {error && (

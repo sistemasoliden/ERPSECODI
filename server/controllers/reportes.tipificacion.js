@@ -58,50 +58,79 @@ export async function serieTipificacion(req, res) {
     const scopedIds = getScopedUserIds(req);
     const userCrit = buildUserCriterion(scopedIds);
 
-    const fmtYmdTZ = (d) =>
-      new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" })
-        .format(d); // YYYY-MM-DD
-
-    // ——— RANGO from/to ———
+    // === RANGO explícito ===
     if (req.query.from && req.query.to) {
-      const start = new Date(`${req.query.from}T00:00:00`);
-      const end   = new Date(`${req.query.to}T23:59:59.999`);
+      const start = new Date(`${req.query.from}T00:00:00-05:00`);
+      const end = new Date(`${req.query.to}T23:59:59.999-05:00`);
 
-      const itemsAgg = await Assignment.aggregate([
-        { $match: { ...userCrit, tipificationId: { $exists: true, $ne: null }, tipifiedAt: { $gte: start, $lte: end } } },
-        { $group: { _id: { $dateTrunc: { date: "$tipifiedAt", unit: "day", timezone: TZ } }, total: { $sum: 1 } } },
-        { $project: { _id: 0, date: { $dateToString: { date: "$_id", format: "%Y-%m-%d", timezone: TZ } }, total: 1 } },
-        { $sort: { date: 1 } },
+      const data = await Assignment.aggregate([
+        {
+          $match: {
+            ...userCrit,
+            tipificationId: { $exists: true, $ne: null },
+            tipifiedAt: { $gte: start, $lte: end },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$tipifiedAt",
+                timezone: "America/Lima",
+              },
+            },
+            total: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
       ]);
 
-      const map = new Map(itemsAgg.map(it => [it.date, it.total]));
-      const filled = [];
-      for (let cur = new Date(start); cur <= end; cur.setDate(cur.getDate() + 1)) {
-        const key = fmtYmdTZ(cur);
-        filled.push({ date: key, total: map.get(key) ?? 0 });
+      // Compacto: rellena días faltantes sin Intl ni DateTimeFormat
+      const map = new Map(data.map((d) => [d._id, d.total]));
+      const result = [];
+      let cur = new Date(start);
+      while (cur <= end) {
+        const key = cur.toISOString().slice(0, 10);
+        result.push({ date: key, total: map.get(key) || 0 });
+        cur.setDate(cur.getDate() + 1);
       }
-      return res.json({ items: filled });
+
+      return res.json({ items: result });
     }
 
-    // ——— MES/AÑO ———
+    // === MES/AÑO ===
     const month = Number(req.query.month || req.query.mes);
-    const year  = Number(req.query.year  || req.query.anio);
-    if (!month || !year) return res.status(400).json({ message: "month/year o from/to requeridos" });
+    const year = Number(req.query.year || req.query.anio);
+    if (!month || !year)
+      return res.status(400).json({ message: "month/year o from/to requeridos" });
 
     const { start, end } = monthRangeLocalTZ(year, month);
 
     const agg = await Assignment.aggregate([
-      { $match: { ...userCrit, tipificationId: { $exists: true, $ne: null }, tipifiedAt: { $gte: start, $lt: end } } },
-      { $group: { _id: { $dayOfMonth: { date: "$tipifiedAt", timezone: TZ } }, total: { $sum: 1 } } },
-      { $project: { _id: 0, day: "$_id", total: 1 } },
-      { $sort: { day: 1 } },
+      {
+        $match: {
+          ...userCrit,
+          tipificationId: { $exists: true, $ne: null },
+          tipifiedAt: { $gte: start, $lt: end },
+        },
+      },
+      {
+        $group: {
+          _id: { $dayOfMonth: { date: "$tipifiedAt", timezone: "America/Lima" } },
+          total: { $sum: 1 },
+        },
+      },
     ]);
 
-    const dim = daysInMonth(year, month);
-    const mapMonth = new Map(agg.map(it => [it.day, it.total]));
-    const filledMonth = Array.from({ length: dim }, (_, i) => ({ day: i + 1, total: mapMonth.get(i + 1) ?? 0 }));
+    const dim = new Date(year, month, 0).getDate();
+    const map = new Map(agg.map((d) => [d._id, d.total]));
+    const items = Array.from({ length: dim }, (_, i) => ({
+      day: i + 1,
+      total: map.get(i + 1) || 0,
+    }));
 
-    res.json({ items: filledMonth });
+    return res.json({ items });
   } catch (err) {
     console.error("[reportes.tipificacion.serie]", err);
     res.status(500).json({ message: "Error generando serie de tipificación" });

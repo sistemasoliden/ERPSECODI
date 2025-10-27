@@ -188,246 +188,62 @@ export async function listMyOpportunities(req, res) {
     const userId = req.user?._id || req.user?.id;
     if (!userId) return res.status(401).json({ error: "No autenticado" });
 
-    const page = parseInt(req.query.page || "1", 10);
-    const limit = parseInt(req.query.limit || "20", 10);
-    const q = String(req.query.q || "").trim();
+    const page  = Math.max(1, parseInt(req.query.page || "1", 10));
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit || "20", 10)), 100);
+
+    const q        = String(req.query.q || "").trim();
     const estadoId = req.query.estadoId ? String(req.query.estadoId) : null;
 
-    const fromStr = req.query.from ? String(req.query.from) : null; // "yyyy-mm-dd"
-    const toStr = req.query.to ? String(req.query.to) : null; // "yyyy-mm-dd"
-    const openOnly = String(req.query.openOnly) === "true";
+    const fromStr  = req.query.from ? String(req.query.from) : null;
+    const toStr    = req.query.to   ? String(req.query.to)   : null;
+    const openOnly   = String(req.query.openOnly) === "true";
     const onlyClosed = String(req.query.onlyClosed) === "true";
 
     const match = { ownerId: new mongoose.Types.ObjectId(userId) };
+
     if (estadoId) match.estadoId = estadoId;
     if (!estadoId) {
-      if (openOnly) match.cerrada = false;
+      if (openOnly)   match.cerrada = false;
       if (onlyClosed) match.cerrada = true;
     }
-    if (q) {
+
+    if (q.length >= 3) {
       match.$or = [
-        { ruc: { $regex: q, $options: "i" } },
-        { razonSocial: { $regex: q, $options: "i" } },
+        { ruc:         { $regex: `^${q}`, $options: "i" } }, // prefijo
+        { razonSocial: { $regex: q,       $options: "i" } },
       ];
     }
+
     if (fromStr || toStr) {
       match.createdAt = {};
-      if (fromStr)
-        match.createdAt.$gte = new Date(`${fromStr}T00:00:00.000-05:00`);
-      if (toStr) match.createdAt.$lte = new Date(`${toStr}T23:59:59.999-05:00`);
+      if (fromStr) match.createdAt.$gte = new Date(`${fromStr}T00:00:00.000-05:00`);
+      if (toStr)   match.createdAt.$lte = new Date(`${toStr}T23:59:59.999-05:00`);
     }
 
-    const pipeline = [
-      { $match: match },
-      { $sort: { createdAt: -1 } },
-      { $skip: (page - 1) * limit },
-      { $limit: limit },
+    const items = await Opportunity
+      .find(
+        match,
+        {
+          ruc: 1,
+          razonSocial: 1,
+          estadoNombre: 1,
+          monto: 1,
+          cantidad: 1,
+          createdAt: 1,
+        }
+      )
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
 
-      // BaseSecodi por RUC
-      {
-        $lookup: {
-          from: "basesecodi",
-          let: { r: "$ruc" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $or: [
-                    { $eq: ["$ruc", "$$r"] },
-                    { $eq: ["$rucStr", "$$r"] },
-                    { $eq: ["$RUC", "$$r"] },
-                  ],
-                },
-              },
-            },
-            {
-              $project: {
-                _id: 1,
-                ruc: { $ifNull: ["$rucStr", { $toString: "$ruc" }] },
-                razonSocial: { $ifNull: ["$razonSocial", "$RAZON_SOCIAL"] },
-                direccion: 1,
-                sunatDepartment: 1,
-                sunatProvince: 1,
-                sunatDistrict: 1,
-                movistarLines: 1,
-                claroLines: 1,
-                entelLines: 1,
-                otherLines: 1,
-                uncountedLines: 1,
-                totalLines: 1,
-              },
-            },
-          ],
-          as: "base",
-        },
-      },
-      { $addFields: { base: { $arrayElemAt: ["$base", 0] } } },
+    // Sin count (mucho más rápido). El front puede usar hasMore para paginar.
+    const hasMore = items.length === limit;
 
-      // Lookups para nombres (IDs -> nombres) SIN modalidad
-      {
-        $lookup: {
-          from: "tiposventas", // nombre real de la colección
-          let: { id: "$tipoVentaId" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $ne: ["$$id", null] },
-                    {
-                      $eq: [
-                        "$_id",
-                        {
-                          $convert: {
-                            input: "$$id",
-                            to: "objectId",
-                            onError: null,
-                            onNull: null,
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                },
-              },
-            },
-            { $project: { _id: 0, nombre: 1 } },
-          ],
-          as: "_tv",
-        },
-      },
-      {
-        $lookup: {
-          from: "productos",
-          let: { id: "$productoId" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $ne: ["$$id", null] },
-                    {
-                      $eq: [
-                        "$_id",
-                        {
-                          $convert: {
-                            input: "$$id",
-                            to: "objectId",
-                            onError: null,
-                            onNull: null,
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                },
-              },
-            },
-            { $project: { _id: 0, nombre: 1 } },
-          ],
-          as: "_prod",
-        },
-      },
-      {
-        $addFields: {
-          tipoVentaNombre: {
-            $ifNull: [{ $arrayElemAt: ["$_tv.nombre", 0] }, "$tipoVentaNombre"],
-          },
-          productoNombre: {
-            $ifNull: [
-              { $arrayElemAt: ["$_prod.nombre", 0] },
-              "$productoNombre",
-            ],
-          },
-        },
-      },
-
-      // Contacto: por contactId o por RUC (fallback)
-      {
-        $lookup: {
-          from: "contactosempresas",
-          let: {
-            cid: "$contactId",
-            baseId: "$base._id",
-          },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $or: [
-                    {
-                      $and: [
-                        { $ne: ["$$cid", null] },
-                        {
-                          $eq: [
-                            "$_id",
-                            {
-                              $convert: {
-                                input: "$$cid",
-                                to: "objectId",
-                                onError: null,
-                                onNull: null,
-                              },
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    {
-                      $and: [
-                        { $ne: ["$$baseId", null] },
-                        { $eq: ["$ruc", "$$baseId"] },
-                      ],
-                    },
-                  ],
-                },
-              },
-            },
-            { $sort: { updatedAt: -1, createdAt: -1 } },
-            { $limit: 1 },
-            {
-              $project: {
-                _id: 0,
-                nombre: { $ifNull: ["$referenceName", "$name"] },
-                celular: {
-                  $ifNull: ["$contactDescription", { $ifNull: ["$phone", ""] }],
-                },
-                cargo: { $ifNull: ["$position", ""] },
-                correo: { $ifNull: ["$email", ""] },
-              },
-            },
-          ],
-          as: "_contacto",
-        },
-      },
-      {
-        $addFields: {
-          contacto: {
-            $cond: [
-              { $gt: [{ $size: "$_contacto" }, 0] },
-              { $arrayElemAt: ["$_contacto", 0] },
-              {
-                $ifNull: [
-                  "$contacto",
-                  { nombre: "", celular: "", cargo: "", correo: "" },
-                ],
-              },
-            ],
-          },
-        },
-      },
-
-      // limpiar helpers
-      { $unset: ["_tv", "_prod", "_contacto"] },
-    ];
-
-    const count = await Opportunity.countDocuments(match);
-    const items = await Opportunity.aggregate(pipeline);
-
-    res.json({ items, total: count, page, pages: Math.ceil(count / limit) });
+    return res.json({ items, page, limit, hasMore });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "No se pudo listar oportunidades" });
+    return res.status(500).json({ error: "No se pudo listar oportunidades" });
   }
 }
 
@@ -661,7 +477,7 @@ export async function listOpportunitiesSupervisor(req, res) {
   try {
     const scopedIds = getScopedUserIds(req);
 
-    // ¿mandaron explícitamente userIds en el query?
+    // ¿mandaron explícitamente userIds?
     const hasUserIds =
       Array.isArray(req.query.userIds)
         ? req.query.userIds.length > 0
@@ -669,14 +485,11 @@ export async function listOpportunitiesSupervisor(req, res) {
           ? req.query.userIds.trim().length > 0
           : false;
 
-    // Para Sistemas:
-    // - si NO mandan userIds => modo global (forceGlobal)
-    // - o si incluyen includeAllTeams=1 => global también
-    const forceGlobal = isSistemasRole(req) && !hasUserIds; // ⬅️ NEW
+    // Para Sistemas: permitir todo si incluyen includeAllTeams=1 y no mandan userIds
     const allowAll =
-  isSistemasRole(req) &&
-  !hasUserIds &&
-  String(req.query.includeAllTeams || "") === "1";
+      isSistemasRole(req) &&
+      !hasUserIds &&
+      String(req.query.includeAllTeams || "") === "1";
 
     const page  = Math.max(1, parseInt(req.query.page || "1", 10));
     const limit = Math.min(Math.max(1, parseInt(req.query.limit || "20", 10)), 200);
@@ -684,105 +497,96 @@ export async function listOpportunitiesSupervisor(req, res) {
     const estadoId = req.query.estadoId ? String(req.query.estadoId) : null;
     const fromStr  = req.query.from ? String(req.query.from) : null;
     const toStr    = req.query.to   ? String(req.query.to)   : null;
+    const withTotal = String(req.query.withTotal || "") === "1"; // <-- opcional
 
-    // Si NO es allowAll y no hay IDs válidos, devuelve vacío (respeta noFallback)
-    const match = allowAll ? {} : buildOwnerCriterion(scopedIds); // ⬅️ NEW
+    // Si NO es allowAll y no hay IDs válidos → vacío
+    const match = allowAll ? {} : buildOwnerCriterion(scopedIds);
     if (!allowAll && !scopedIds.length) {
-      return res.json({ items: [], total: 0, page: 1, pages: 1 });
+      return res.json({ items: [], total: withTotal ? 0 : undefined, page: 1, pages: withTotal ? 1 : undefined, hasMore: false });
     }
 
     if (estadoId) match.estadoId = estadoId;
-    if (q) {
+
+    // Búsqueda: usa prefijo para RUC y evita regex si q < 3
+    if (q.length >= 3) {
       match.$or = [
-        { ruc:         { $regex: q, $options: "i" } },
-        { razonSocial: { $regex: q, $options: "i" } },
+        { ruc:         { $regex: `^${q}`, $options: "i" } },
+        { razonSocial: { $regex: q,       $options: "i" } },
       ];
     }
+
     if (fromStr || toStr) {
       match.createdAt = {};
       if (fromStr) match.createdAt.$gte = new Date(`${fromStr}T00:00:00.000-05:00`);
       if (toStr)   match.createdAt.$lte = new Date(`${toStr}T23:59:59.999-05:00`);
     }
 
-    const pipeline = [
-      { $match: match },
-      {
-        $facet: {
-          items: [
-            { $sort: { createdAt: -1, _id: -1 } },
-            { $skip: (page - 1) * limit },
-            { $limit: limit },
-            {
-              $lookup: {
-                from: "users",
-                let: { oid: "$ownerId" },
-                pipeline: [
-                  { $match: { $expr: { $eq: ["$_id", "$$oid"] } } },
-                  {
-                    $project: {
-                      _id: 0,
-                      ownerName: {
-                        $ifNull: [
-                          "$name",
-                          {
-                            $trim: {
-                              input: {
-                                $concat: [
-                                  { $ifNull: ["$firstName", ""] },
-                                  " ",
-                                  { $ifNull: ["$lastName", ""] },
-                                ],
-                              },
-                            },
-                          },
-                        ],
-                      },
-                      ownerEmail: "$email",
-                    },
-                  },
-                ],
-                as: "_owner",
-              },
-            },
-            {
-              $addFields: {
-                ownerName:  { $ifNull: [{ $arrayElemAt: ["$_owner.ownerName", 0]  }, "" ] },
-                ownerEmail: { $ifNull: [{ $arrayElemAt: ["$_owner.ownerEmail", 0] }, "" ] },
-              },
-            },
-            { $unset: ["_owner"] },
-            {
-              $project: {
-                ruc: 1,
-                razonSocial: 1,
-                ownerName: 1,
-                ownerEmail: 1,
-                estadoNombre: 1,
-                monto: 1,
-                cantidad: 1,
-                createdAt: 1,
-              },
-            },
-          ],
-          total: [{ $count: "n" }],
-        },
-      },
-      {
-        $project: {
-          items: 1,
-          total: { $ifNull: [{ $arrayElemAt: ["$total.n", 0] }, 0] },
-        },
-      },
-    ];
+    // 1) Trae solo lo que la tabla necesita (rápido)
+    const baseFields = {
+      _id: 1,
+      ownerId: 1,
+      ruc: 1,
+      razonSocial: 1,
+      estadoNombre: 1,
+      monto: 1,
+      cantidad: 1,
+      createdAt: 1,
+    };
 
-    const [{ items = [], total = 0 } = {}] =
-      await Opportunity.aggregate(pipeline).allowDiskUse(true);
+    const itemsRaw = await Opportunity.find(match, baseFields)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
 
+    // 2) Resolver dueño con UNA consulta a users (en Node, no en pipeline)
+    const ownerIds = [...new Set(itemsRaw.map(i => String(i.ownerId)).filter(Boolean))];
+    let usersMap = new Map();
+    if (ownerIds.length) {
+      const users = await mongoose.model("User").find(
+        { _id: { $in: ownerIds.map(id => new mongoose.Types.ObjectId(id)) } },
+        { _id: 1, name: 1, firstName: 1, lastName: 1, email: 1 }
+      ).lean();
+
+      usersMap = new Map(
+        users.map(u => {
+          const display =
+            u.name && u.name.trim()
+              ? u.name.trim()
+              : `${(u.firstName || "").trim()} ${(u.lastName || "").trim()}`.trim();
+          return [String(u._id), { ownerName: display || "", ownerEmail: u.email || "" }];
+        })
+      );
+    }
+
+    const items = itemsRaw.map(it => {
+      const meta = usersMap.get(String(it.ownerId)) || { ownerName: "", ownerEmail: "" };
+      return {
+        ruc: it.ruc,
+        razonSocial: it.razonSocial,
+        ownerName: meta.ownerName,
+        ownerEmail: meta.ownerEmail,
+        estadoNombre: it.estadoNombre,
+        monto: it.monto,
+        cantidad: it.cantidad,
+        createdAt: it.createdAt,
+      };
+    });
+
+    // 3) Respuesta: modo rápido (hasMore) o con total/páginas si piden withTotal=1
+    if (!withTotal) {
+      const hasMore = items.length === limit;
+      return res.json({ items, page, limit, hasMore });
+    }
+
+    // Si piden total, lo calculamos aparte (más lento pero opcional)
+    const total = await Opportunity.countDocuments(match);
     const pages = Math.max(1, Math.ceil(total / limit));
-    return res.json({ items, total, page, pages });
+    return res.json({ items, total, page, pages, limit });
   } catch (err) {
     console.error("[oportunidades.supervisor.list] ERROR", err);
     return res.status(500).json({ error: "No se pudo listar oportunidades (supervisor)" });
   }
 }
+
 // controllers/oportunidades.js

@@ -1,7 +1,7 @@
+// middlewares/auth.js
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import User from "../models/User.js"; // ajusta la ruta si difiere
-
 
 // IDs de rol (los que ya usas)
 export const ROLES_IDS = {
@@ -25,22 +25,42 @@ export const ESTADO_ACTIVO_ID = "68a4f3dc27e6abe98157a845";
  */
 export async function verifyToken(req, res, next) {
   try {
-    const raw = req.headers.authorization || "";
-    const token = raw.startsWith("Bearer ") ? raw.slice(7) : null;
-    if (!token) return res.status(401).json({ message: "Token requerido" });
+    // Soporta 'authorization' y 'Authorization'
+    const raw =
+      req.headers.authorization || req.headers.Authorization || "";
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.id || decoded._id;
-    if (!userId || !mongoose.isValidObjectId(userId)) {
+    if (!raw || !raw.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Token requerido" });
+    }
+
+    // Limpia comillas si el token fue guardado con JSON.stringify accidentalmente
+    let token = raw.slice(7).trim().replace(/^"|"$/g, "");
+
+    // Validación rápida del formato (3 partes)
+    if (token.split(".").length !== 3) {
       return res.status(401).json({ message: "Token inválido" });
     }
 
+    // Verificación del JWT
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Acepta 'id' o '_id' en el payload
+    const userId = decoded?.id || decoded?._id;
+    if (!userId || !mongoose.isValidObjectId(String(userId))) {
+      return res.status(401).json({ message: "Token inválido" });
+    }
+
+    // Carga del usuario
     const user = await User.findById(userId)
       .select("_id role estadoUsuario name email")
       .lean();
-    if (!user) return res.status(401).json({ message: "Usuario no encontrado" });
+
+    if (!user) {
+      return res.status(401).json({ message: "Usuario no encontrado" });
+    }
 
     const roleId = String(user.role?._id || user.role || "");
+
     req.user = {
       _id: user._id,
       roleId,
@@ -49,9 +69,10 @@ export async function verifyToken(req, res, next) {
       email: user.email,
       estadoUsuario: user.estadoUsuario, // por si quieres validar activo
     };
+
     next();
   } catch (err) {
-    console.error("verifyToken error:", err);
+    console.error("verifyToken error:", err?.name, err?.message);
     return res.status(401).json({ message: "Token inválido" });
   }
 }
@@ -70,15 +91,20 @@ export function requireRoles(allowedRoleIds = []) {
 /** Verifica que el user destino exista, esté ACTIVO y sea COMERCIAL */
 export async function ensureTargetIsActiveCommercial(req, res, next) {
   try {
-    const { userId } = req.body || req.query || {};
-    if (!mongoose.isValidObjectId(userId)) {
+    // Usa nullish coalescing para no “encerrarte” si body existe pero sin userId
+    const userId = req.body?.userId ?? req.query?.userId;
+
+    if (!mongoose.isValidObjectId(String(userId))) {
       return res.status(400).json({ message: "userId inválido" });
     }
+
     const u = await User.findById(userId)
       .select("_id role estadoUsuario name")
       .lean();
 
-    if (!u) return res.status(404).json({ message: "Usuario destino no existe" });
+    if (!u) {
+      return res.status(404).json({ message: "Usuario destino no existe" });
+    }
 
     const roleId = String(u.role?._id || u.role || "");
     if (roleId !== ROLES_IDS.comercial) {
@@ -91,7 +117,6 @@ export async function ensureTargetIsActiveCommercial(req, res, next) {
       return res.status(400).json({ message: "El usuario destino no está Activo" });
     }
 
-    // pasa
     next();
   } catch (e) {
     console.error("ensureTargetIsActiveCommercial error:", e);

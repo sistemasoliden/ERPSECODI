@@ -51,6 +51,9 @@ const THEME = {
 };
 
 /* ========= UI helpers ========= */
+
+// Normaliza [{ejecutivoId, ejecutivo, semana, total}] -> {ejecutivo, w1..w6}
+
 function Box({ title, children, className = "" }) {
   return (
     <div className={`${THEME.card} ${className}`}>
@@ -344,6 +347,96 @@ export default function ReportOportunidadesSupervisor() {
   const [miniSerieMonto, setMiniSerieMonto] = useState([]);
   const [miniSerieCantidad, setMiniSerieCantidad] = useState([]);
   const [loadingMini, setLoadingMini] = useState(false);
+  // Semanas por ejecutivo (oportunidades)
+  const [oppWeeks, setOppWeeks] = useState([]); // [{ejecutivo, w1..w4}]
+  const [objetivoSemanalOpp, setObjetivoSemanalOpp] = useState(25);
+
+  // ───────── Semanas fijas (S1=1–7, S2=8–15, S3=16–23, S4=24–fin) ─────────
+  // S1: 1–7, S2: 8–15, S3: 16–23, S4: 24–fin
+  const week4FromDay = (day) => {
+    const d = Number(day) || 0;
+    if (d <= 7) return 1;
+    if (d <= 15) return 2;
+    if (d <= 23) return 3;
+    return 4;
+  };
+
+  // helpers robustos
+  const toInt = (v) => {
+    if (v === 0 || v === "0") return 0;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const dayFromAny = (obj) => {
+    // intenta campos numéricos típicos
+    const candNums = [obj.day, obj.d, obj.fechaDia, obj.dia, obj.dayOfMonth];
+    for (const x of candNums) {
+      const n = toInt(x);
+      if (Number.isFinite(n) && n > 0 && n <= 31) return n;
+    }
+    // intenta campos fecha string/Date
+    const candDates = [
+      obj.date,
+      obj.fecha,
+      obj.inicio,
+      obj.createdAt,
+      obj.updatedAt,
+    ];
+    for (const v of candDates) {
+      if (!v) continue;
+      const dt = new Date(v);
+      if (!Number.isNaN(dt.getTime())) return dt.getDate();
+      // si llega "YYYY-MM-DD" como texto plano
+      if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+        const dd = Number(v.slice(8, 10));
+        if (dd) return dd;
+      }
+    }
+    return 0;
+  };
+  const semanaTo1a4 = (wk, fallbackDay) => {
+    // acepta 1..6 → clamp a 1..4
+    const n = toInt(wk);
+    if (Number.isFinite(n)) return Math.max(1, Math.min(4, n > 4 ? 4 : n));
+    // "W2" -> 2
+    if (typeof wk === "string" && /^W?\d+$/i.test(wk)) {
+      const m = wk.match(/\d+/);
+      return Math.max(1, Math.min(4, Number(m[0]) > 4 ? 4 : Number(m[0])));
+    }
+    // si viene una fecha como "2025-02-15" en `semana`
+    if (typeof wk === "string" && /\d{4}-\d{2}-\d{2}/.test(wk)) {
+      const dd = dayFromAny({ date: wk });
+      if (dd) return week4FromDay(dd);
+    }
+    // último recurso: usar el día
+    if (fallbackDay) return week4FromDay(fallbackDay);
+    return 1;
+  };
+
+  function normalizeWeeksByExecutive4(items = []) {
+    const byExec = new Map();
+
+    items.forEach((it) => {
+      const execId = String(it.ejecutivoId || it.ejecutivo || "?");
+      const day = dayFromAny(it); // ← día real
+      const w = semanaTo1a4(it.semana ?? it.week, day); // ← semana 1..4 robusta
+      const total = toInt(it.total ?? it.count ?? it.valor) || 0;
+
+      if (!byExec.has(execId)) {
+        byExec.set(execId, {
+          ejecutivoId: it.ejecutivoId,
+          ejecutivo: it.ejecutivo,
+          w1: 0,
+          w2: 0,
+          w3: 0,
+          w4: 0,
+        });
+      }
+      byExec.get(execId)[`w${w}`] += total;
+    });
+
+    return Array.from(byExec.values());
+  }
 
   /* Helpers (puedes moverlos arriba del archivo) */
   const niceNumber = (v = 0) => (Number(v) || 0).toLocaleString("es-PE");
@@ -373,11 +466,12 @@ export default function ReportOportunidadesSupervisor() {
     String(v).length > 26 ? String(v).slice(0, 24) + "…" : v;
 
   const getRangeParams = () => (from && to ? { from, to } : { month, year });
-
-  /* 1) Cargar barras y miembros */
+  // 1) Cargar barras y miembros
   const loadBarsAndMembers = async () => {
+    const base = getRangeParams(); // ← definir aquí
+
     try {
-      const base = getRangeParams();
+      // barras + miembros
       const { data } = await api.get("/reportes/oportunidades/por-ejecutivo", {
         ...authHeader,
         params: base,
@@ -393,12 +487,22 @@ export default function ReportOportunidadesSupervisor() {
       setMembers(mem);
 
       if (mem.length && !didInitSelection.current) {
-        setSelectedIds(mem.map((m) => String(m._id))); // todos al inicio
+        setSelectedIds(mem.map((m) => String(m._id)));
         didInitSelection.current = true;
       }
+
+      // semanas 1..6 (mismo endpoint con group=week)
+      const rW = await api.get("/reportes/oportunidades/por-ejecutivo", {
+        ...authHeader,
+        params: { ...base, group: "week" },
+      });
+      const listW = Array.isArray(rW.data?.items) ? rW.data.items : [];
+      setOppWeeks(normalizeWeeksByExecutive4(listW));
     } catch (e) {
+      console.warn("[Supervisor Oportunidades] loadBarsAndMembers", e?.message);
       setMembers([]);
       setBars([]);
+      setOppWeeks([]);
     }
   };
 
@@ -493,6 +597,22 @@ export default function ReportOportunidadesSupervisor() {
   };
 
   /* Efectos */
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("report_opp_obj_semanal");
+      if (v !== null && !Number.isNaN(Number(v)))
+        setObjetivoSemanalOpp(Number(v));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "report_opp_obj_semanal",
+        String(objetivoSemanalOpp)
+      );
+    } catch {}
+  }, [objetivoSemanalOpp]);
+
   useEffect(() => {
     loadBarsAndMembers(); /* eslint-disable-next-line */
   }, [from, to, month, year, token]);
@@ -676,7 +796,7 @@ export default function ReportOportunidadesSupervisor() {
           ) : !serie.length ? (
             <Empty />
           ) : (
-            <div className="h-[320px]">
+            <div className="h-[380px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={serie}
@@ -740,7 +860,7 @@ export default function ReportOportunidadesSupervisor() {
           ) : !dist.length ? (
             <Empty />
           ) : (
-            <div className="h-[320px]">
+            <div className="h-[380px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart margin={{ top: 0, right: 8, left: 8, bottom: 40 }}>
                   <Pie
@@ -1040,7 +1160,7 @@ export default function ReportOportunidadesSupervisor() {
       </div>
 
       {/* Barras por ejecutivo */}
-      <div className="mt-3">
+      <div className="mt-3 grid grid-cols-1 lg:grid-cols-[1.2fr_1.8fr] gap-3">
         <Box title="Oportunidades por Ejecutivo ">
           {!bars.length ? (
             <Empty />
@@ -1140,6 +1260,245 @@ export default function ReportOportunidadesSupervisor() {
                 </ResponsiveContainer>
               </div>
             </>
+          )}
+        </Box>
+
+        {/* Tabla: Oportunidades por ejecutivo • Semanas (4 semanas + objetivo mensual y alcance) */}
+        <Box
+          title={
+            <div className="flex items-center justify-between">
+              <span>Efectividad de los ejecutivo</span>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] text-slate-600">
+                  Objetivo <strong>semanal</strong>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={objetivoSemanalOpp}
+                  onChange={(e) => setObjetivoSemanalOpp(e.target.value)}
+                  className="h-7 w-12 rounded-md border border-gray-300 text-center text-[12px] leading-7 p-0"
+                  title="Meta semanal por ejecutivo (se guarda)"
+                />
+              </div>
+            </div>
+          }
+        >
+          {!oppWeeks.length ? (
+            <Empty text="Sin datos de semanas" />
+          ) : (
+           <div className="h-[420px] overflow-auto relative mx-7">
+  <table className="w-full table-fixed border border-gray-200">
+
+ <colgroup>
+      <col className="w-36" />            {/* Ejecutivo (≈144px) */}
+      <col className="w-14" /> <col className="w-10" />
+      <col className="w-14" /> <col className="w-10" />
+      <col className="w-14" /> <col className="w-10" />
+      <col className="w-14" /> <col className="w-10" />
+      <col className="w-20" />            {/* objetivo */}
+      <col className="w-28" />            {/* Alcance (barra) */}
+    </colgroup>
+
+                
+    <thead className="sticky top-0 z-10 bg-gray-800 text-white capitalize text-[11px] shadow-sm">
+      <tr>
+        <th className="px-2 py-3 text-center">Ejecutivo</th>
+        <th className="px-2 py-3 text-center">S1</th>
+        <th className="px-2 py-3 text-center">%</th>
+        <th className="px-2 py-3 text-center">S2</th>
+        <th className="px-2 py-3 text-center">%</th>
+        <th className="px-2 py-3 text-center">S3</th>
+        <th className="px-2 py-3 text-center">%</th>
+        <th className="px-2 py-3 text-center">S4</th>
+        <th className="px-2 py-3 text-center">%</th>
+        <th className="px-2 py-3 text-center">objetivo</th>
+        <th className="px-2 py-3 text-center">Alcance</th>
+      </tr>
+    </thead>
+
+
+                <tbody className="text-[11px]">
+                  {oppWeeks.map((row, idx) => {
+                    const objSem =
+                      Number(objetivoSemanalOpp) > 0
+                        ? Number(objetivoSemanalOpp)
+                        : 0;
+                    const w1 = Number(row.w1) || 0;
+                    const w2 = Number(row.w2) || 0;
+                    const w3 = Number(row.w3) || 0;
+                    const w4 = Number(row.w4) || 0;
+
+                    const pct = (v) =>
+                      objSem ? Math.round((v * 100) / objSem) : 0;
+                    const total = w1 + w2 + w3 + w4;
+                    const objMes = objSem * 4;
+                    const alcance = objMes
+                      ? Math.round((total * 100) / objMes)
+                      : 0;
+
+                    return (
+                      <tr
+                        key={row.ejecutivo || idx}
+                        className={idx % 2 ? "bg-[#fafafa]" : "bg-white"}
+                      >
+                        <td className="px-3 py-2 border-b border-gray-200 font-bold text-center text-slate-800 text-[10px]">
+                          {row.ejecutivo}
+                        </td>
+
+                        <td className="px-3 py-2 border-b border-gray-200 text-orange-600 font-semibold text-center">
+                          {fmtNum(w1)}
+                        </td>
+                        <td className="px-3 py-2 border-b border-gray-200 text-center text-[11px] text-blue-800 font-bold">
+                          {pct(w1)}%
+                        </td>
+
+                        <td className="px-3 py-2 border-b border-gray-200 text-orange-600 font-semibold text-center">
+                          {fmtNum(w2)}
+                        </td>
+                        <td className="px-3 py-2 border-b border-gray-200 text-center text-[11px] text-blue-800 font-bold">
+                          {pct(w2)}%
+                        </td>
+
+                        <td className="px-3 py-2 border-b border-gray-200 text-orange-600 font-semibold text-center">
+                          {fmtNum(w3)}
+                        </td>
+                        <td className="px-3 py-2 border-b border-gray-200 text-center text-[11px] text-blue-800 font-bold">
+                          {pct(w3)}%
+                        </td>
+
+                        <td className="px-3 py-2 border-b border-gray-200 text-orange-600 font-semibold text-center">
+                          {fmtNum(w4)}
+                        </td>
+                        <td className="px-3 py-2 border-b border-gray-200 text-center text-[11px] text-blue-800 font-bold">
+                          {pct(w4)}%
+                        </td>
+
+                        {/* Objetivo mensual + Alcance */}
+                        <td className="px-3 py-2 border-b border-gray-200 text-center font-bold text-black">
+                          {fmtNum(objMes)}
+                        </td>
+                        <td className="px-3 py-2 border-b border-gray-200 text-center">
+                          <div className="font-semibold text-slate-900">
+                            {alcance}%
+                          </div>
+                          <div className="mt-1 h-3 w-full rounded bg-gray-200">
+                            <div
+                              className="h-3 rounded bg-emerald-900"
+                              style={{ width: `${Math.min(100, alcance)}%` }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+
+                <tfoot>
+                  <tr className="bg-gray-100 font-bold text-slate-800">
+                    <td className="px-3 py-2 text-[10px] text-center">
+                      Totales
+                    </td>
+
+                    {/* S1 */}
+                    <td className="px-3 py-2 text-center text-[10px]">
+                      {fmtNum(
+                        oppWeeks.reduce(
+                          (acc, r) => acc + (Number(r.w1) || 0),
+                          0
+                        )
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center text-[10px] text-slate-600">
+                      {objetivoSemanalOpp > 0
+                        ? Math.round(
+                            (oppWeeks.reduce(
+                              (acc, r) => acc + (Number(r.w1) || 0),
+                              0
+                            ) *
+                              100) /
+                              (objetivoSemanalOpp * oppWeeks.length)
+                          ) + "%"
+                        : "—"}
+                    </td>
+
+                    {/* S2 */}
+                    <td className="px-3 py-2 text-center text-[10px]">
+                      {fmtNum(
+                        oppWeeks.reduce(
+                          (acc, r) => acc + (Number(r.w2) || 0),
+                          0
+                        )
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center text-[10px] text-slate-600">
+                      {objetivoSemanalOpp > 0
+                        ? Math.round(
+                            (oppWeeks.reduce(
+                              (acc, r) => acc + (Number(r.w2) || 0),
+                              0
+                            ) *
+                              100) /
+                              (objetivoSemanalOpp * oppWeeks.length)
+                          ) + "%"
+                        : "—"}
+                    </td>
+
+                    {/* S3 */}
+                    <td className="px-3 py-2 text-center text-[10px]">
+                      {fmtNum(
+                        oppWeeks.reduce(
+                          (acc, r) => acc + (Number(r.w3) || 0),
+                          0
+                        )
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center text-[10px] text-slate-600">
+                      {objetivoSemanalOpp > 0
+                        ? Math.round(
+                            (oppWeeks.reduce(
+                              (acc, r) => acc + (Number(r.w3) || 0),
+                              0
+                            ) *
+                              100) /
+                              (objetivoSemanalOpp * oppWeeks.length)
+                          ) + "%"
+                        : "—"}
+                    </td>
+
+                    {/* S4 */}
+                    <td className="px-3 py-2 text-center text-[10px]">
+                      {fmtNum(
+                        oppWeeks.reduce(
+                          (acc, r) => acc + (Number(r.w4) || 0),
+                          0
+                        )
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center text-[10px] text-slate-600">
+                      {objetivoSemanalOpp > 0
+                        ? Math.round(
+                            (oppWeeks.reduce(
+                              (acc, r) => acc + (Number(r.w4) || 0),
+                              0
+                            ) *
+                              100) /
+                              (objetivoSemanalOpp * oppWeeks.length)
+                          ) + "%"
+                        : "—"}
+                    </td>
+
+                    {/* Objetivo mensual total y Alcance general (— para mantener simple, igual que Citas) */}
+                    <td className="px-3 py-2 text-center text-[10px]">
+                      {fmtNum(
+                        (Number(objetivoSemanalOpp) || 0) * 4 * oppWeeks.length
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center text-[10px]">—</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           )}
         </Box>
       </div>

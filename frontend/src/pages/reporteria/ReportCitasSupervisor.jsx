@@ -192,6 +192,26 @@ function normalizeDistribucion(objOrArr) {
   return Object.keys(o).map((k) => ({ name: k, value: Number(o[k] || 0) }));
 }
 
+// Normaliza lista [{ejecutivoId, ejecutivo, semana, total}] a filas por ejecutivo {ejecutivo, w1, w2, ...}
+function normalizeWeeksByExecutive(items = [], maxWeeks = 6) {
+  const byExec = new Map();
+  items.forEach((it) => {
+    const key = String(it.ejecutivoId || it.ejecutivo || "?");
+    if (!byExec.has(key)) {
+      const base = { ejecutivoId: it.ejecutivoId, ejecutivo: it.ejecutivo };
+      for (let w = 1; w <= maxWeeks; w++) base[`w${w}`] = 0;
+      byExec.set(key, base);
+    }
+    const row = byExec.get(key);
+    const w = Math.max(
+      1,
+      Math.min(maxWeeks, Number(it.semana || it.week || 0))
+    );
+    row[`w${w}`] += Number(it.total || it.count || 0);
+  });
+  return Array.from(byExec.values());
+}
+
 /* ───────────── Componente: Multi-select desplegable de ejecutivos ───────────── */
 function ExecMultiSelect({ members, value = [], onChange }) {
   const [open, setOpen] = useState(false);
@@ -340,9 +360,24 @@ export default function ReportCitasSupervisor() {
   const [serie, setSerie] = useState([]);
   const [dist, setDist] = useState([]);
   const [bars, setBars] = useState([]); // [{ ejecutivoId, ejecutivo, total }]
+  const [barsWeeks, setBarsWeeks] = useState([]); // filas por ejecutivo {ejecutivo, w1..w6}
   const [error, setError] = useState("");
 
-  // 1) barras + miembros
+  // Objetivo mensual por ejecutivo (para % cumplimiento)
+  const [objetivoSemanal, setObjetivoSemanal] = useState(5);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("report_citas_obj_semanal");
+      if (v !== null && !Number.isNaN(Number(v))) setObjetivoSemanal(Number(v));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("report_citas_obj_semanal", String(objetivoSemanal));
+    } catch {}
+  }, [objetivoSemanal]);
+
+  // 1) barras + miembros + barras por semana (todos los integrantes)
   const loadBarsAndMembers = async () => {
     try {
       const base = from && to ? { from, to } : { month, year };
@@ -352,6 +387,19 @@ export default function ReportCitasSupervisor() {
       });
       const items = Array.isArray(data?.items) ? data.items : [];
       setBars(items);
+
+      // Weekly breakdown (semanas 1..6) — mismo endpoint con group=week
+      try {
+        const rW = await api.get("/reportes/citas/por-ejecutivo", {
+          ...authHeader,
+          params: { ...base, group: "week" },
+        });
+        const listW = Array.isArray(rW.data?.items) ? rW.data.items : [];
+        setBarsWeeks(normalizeWeeksByExecutive(listW, 6));
+      } catch (e) {
+        console.warn("[Supervisor Citas] semanas no disponibles:", e?.message);
+        setBarsWeeks([]);
+      }
 
       const mem = Array.isArray(data?.members)
         ? data.members
@@ -368,6 +416,7 @@ export default function ReportCitasSupervisor() {
       console.error("[Supervisor Citas] load members/bars error:", e);
       setBars([]);
       setMembers([]);
+      setBarsWeeks([]);
     }
   };
 
@@ -462,6 +511,8 @@ export default function ReportCitasSupervisor() {
   // Reset de selección (usado por Limpiar filtros)
   const resetSelectedToAll = () =>
     setSelectedIds(members.map((m) => String(m._id)));
+
+  // Derivados para % objetivo
 
   return (
     <div className="p-6 min-h-dvh" style={{ background: THEME.pageBg }}>
@@ -677,9 +728,10 @@ export default function ReportCitasSupervisor() {
         </Box>
       </div>
 
-      {/* Barras por ejecutivo */}
-      <div className="mt-3">
-        <Box title="Citas por Ejecutivo " className="lg:col-span-3">
+      {/* Barras por ejecutivo + Barras por semana (mitad/mitad) */}
+      <div className="mt-3 grid grid-cols-1 lg:grid-cols-[1.2fr_1.8fr] gap-3">
+        {/* IZQ: Totales por ejecutivo con % objetivo */}
+        <Box title="Citas por Ejecutivo" className="lg:col-span-1">
           {!bars.length ? (
             <Empty />
           ) : (
@@ -688,7 +740,7 @@ export default function ReportCitasSupervisor() {
                 <BarChart
                   data={bars}
                   layout="vertical"
-                  margin={{ top: 12, right: 24, left: 30, bottom: 12 }}
+                  margin={{ top: 12, right: 24, left: 30, bottom: 4 }}
                   barCategoryGap={8}
                 >
                   <CartesianGrid strokeDasharray="2 4" stroke="#828386ff" />
@@ -712,14 +764,14 @@ export default function ReportCitasSupervisor() {
                       ...THEME.tooltipBox,
                       backgroundColor: "white",
                       border: "1px solid #e5e7eb",
-                      borderRadius: 4, // borde más sutil
+                      borderRadius: 4,
                       boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-                      padding: "6px 8px", // menos espacio interno
+                      padding: "6px 8px",
                     }}
                     labelStyle={{
                       ...THEME.tooltipLabel,
                       color: "#1e293b",
-                      fontSize: 10, // letra xs
+                      fontSize: 10,
                       fontWeight: 600,
                       textTransform: "uppercase",
                       marginBottom: 2,
@@ -727,7 +779,7 @@ export default function ReportCitasSupervisor() {
                     formatter={(v) => [`${formatNumber(v)}`, "Citas"]}
                     itemStyle={{
                       color: "#0f172a",
-                      fontSize: 10, // texto pequeño
+                      fontSize: 10,
                       fontWeight: 500,
                     }}
                     cursor={{ fill: "rgba(0,0,0,0.04)" }}
@@ -736,13 +788,12 @@ export default function ReportCitasSupervisor() {
                   <Bar
                     dataKey="total"
                     stroke="transparent"
-                    fill={THEME.colors[0]} // 👈 color sólido (sin gradiente)
+                    fill={THEME.colors[0]}
                     radius={[0, 3, 3, 0]}
                     minPointSize={2}
                     isAnimationActive
                     barSize={30}
                   >
-                    {" "}
                     <LabelList
                       dataKey="total"
                       position="right"
@@ -753,6 +804,276 @@ export default function ReportCitasSupervisor() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+          )}
+        </Box>
+
+        {/* DER: Semanas por ejecutivo (todos los integrantes) */}
+        <Box
+          title={
+            <div className="flex items-center justify-between">
+              <span>Efectividad de citas de los ejecutivos</span>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] text-slate-600">
+                  Objetivo <strong>semanal</strong>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={objetivoSemanal}
+                  onChange={(e) => setObjetivoSemanal(e.target.value)}
+                  className="h-7 w-12 rounded-md border border-gray-300 text-center text-[12px] leading-7 p-0"
+                  title="Define la meta semanal; se guarda automáticamente"
+                />
+              </div>
+            </div>
+          }
+          className="lg:col-span-1"
+        >
+          {!barsWeeks.length ? (
+            <Empty text="Sin datos de semanas" />
+          ) : (
+            <>
+              {/* Control de objetivo */}
+
+              <div className="h-[420px] overflow-auto relative mx-7">
+                <table className="w-full table-fixed border border-gray-200">
+                  <colgroup>
+                    <col className="w-36" /> {/* Ejecutivo (≈144px) */}
+                    <col className="w-14" /> <col className="w-10" />
+                    <col className="w-14" /> <col className="w-10" />
+                    <col className="w-14" /> <col className="w-10" />
+                    <col className="w-14" /> <col className="w-10" />
+                    <col className="w-20" /> {/* objetivo */}
+                    <col className="w-28" /> {/* Alcance (barra) */}
+                  </colgroup>
+                  <thead className="sticky top-0 z-10 bg-gray-800 text-white capitalize text-[11px] shadow-sm">
+                    {" "}
+                    <tr>
+                      <th className="px-3 py-3 text-center ">Ejecutivo</th>
+                      <th className="px-3 py-3 text-center">S1</th>
+                      <th className="px-3 py-3 text-center">% </th>
+                      <th className="px-3 py-3 text-center">S2</th>
+                      <th className="px-3 py-3 text-center">%</th>
+                      <th className="px-3 py-3 text-center">S3</th>
+                      <th className="px-3 py-3 text-center">% </th>
+                      <th className="px-3 py-3 text-center">S4</th>
+                      <th className="px-3 py-3 text-center">% </th>
+                      <th className="px-3 py-3 text-center">
+                        objetivo mensual
+                      </th>
+                      <th className="px-3 py-3 text-center">Alcance</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="text-[11px]">
+                    {barsWeeks.map((row, idx) => {
+                      const w1 = Number(row.w1) || 0;
+                      const w2 = Number(row.w2) || 0;
+                      const w3 = Number(row.w3) || 0;
+                      const w4 = Number(row.w4) || 0;
+                      const rowTotal = w1 + w2 + w3 + w4;
+
+                      const objSem =
+                        Number(objetivoSemanal) > 0
+                          ? Number(objetivoSemanal)
+                          : 0;
+                      const pctW1 = objSem
+                        ? Math.round((w1 * 100) / objSem)
+                        : 0;
+                      const pctW2 = objSem
+                        ? Math.round((w2 * 100) / objSem)
+                        : 0;
+                      const pctW3 = objSem
+                        ? Math.round((w3 * 100) / objSem)
+                        : 0;
+                      const pctW4 = objSem
+                        ? Math.round((w4 * 100) / objSem)
+                        : 0;
+
+                      const objMes = objSem * 4; // total esperado del mes
+                      const alcance = objMes
+                        ? Math.round((rowTotal * 100) / objMes)
+                        : 0;
+
+                      return (
+                        <tr
+                          key={row.ejecutivo || idx}
+                          className={idx % 2 ? "bg-[#fafafa]" : "bg-white"}
+                        >
+                          <td className="px-3 py-2 border-b border-gray-200 font-bold text-center text-slate-800 text-[10px]">
+                            {row.ejecutivo}
+                          </td>
+
+                          {/* Semana 1 */}
+                          <td className="px-3 py-2 border-b border-gray-200 text-orange-600 font-semibold text-center">
+                            {formatNumber(w1)}
+                          </td>
+                          <td className="px-3 py-2 border-b border-gray-200 text-center text-[11px] text-blue-800 font-bold">
+                            {pctW1}%
+                          </td>
+
+                          <td className="px-3 py-2 border-b border-gray-200 text-orange-600 font-semibold text-center">
+                            {formatNumber(w2)}
+                          </td>
+                          <td className="px-3 py-2 border-b border-gray-200 text-center text-[11px] text-blue-800 font-bold">
+                            {pctW2}%
+                          </td>
+
+                          <td className="px-3 py-2 border-b border-gray-200 text-orange-600 font-semibold text-center">
+                            {formatNumber(w3)}
+                          </td>
+                          <td className="px-3 py-2 border-b border-gray-200 text-center text-[11px] text-blue-800 font-bold">
+                            {pctW3}%
+                          </td>
+
+                          <td className="px-3 py-2 border-b border-gray-200 text-orange-600 font-semibold text-center">
+                            {formatNumber(w4)}
+                          </td>
+                          <td className="px-3 py-2 border-b border-gray-200 text-center text-[11px] text-blue-800 font-bold">
+                            {pctW4}%
+                          </td>
+
+                          {/* Total y % mensual vs objetivoSemanal*4 */}
+                          <td className="px-3 py-2 border-b border-gray-200 text-center font-bold text-black">
+                            {formatNumber(rowTotal)}
+                          </td>
+                          <td className="px-3 py-2 border-b border-gray-200 text-center">
+                            <div className="font-semibold text-slate-900">
+                              {alcance}%
+                            </div>
+                            <div className="mt-1 h-3 w-full rounded bg-gray-200 overflow-hidden">
+                              <div
+                                className="h-3 rounded bg-emerald-900 transition-[width] duration-500"
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    Math.max(0, alcance)
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+
+                  <tfoot>
+                    <tr className="bg-gray-100 font-bold text-slate-800">
+                      <td className="px-3 py-2 text-[10px] text-center">
+                        Totales
+                      </td>
+
+                      {/* Semana 1 */}
+                      <td className="px-3 py-2 text-[10px] text-center">
+                        {formatNumber(
+                          barsWeeks.reduce(
+                            (acc, r) => acc + (Number(r.w1) || 0),
+                            0
+                          )
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center text-[10px] text-slate-600">
+                        {objetivoSemanal > 0
+                          ? Math.round(
+                              (barsWeeks.reduce(
+                                (acc, r) => acc + (Number(r.w1) || 0),
+                                0
+                              ) *
+                                100) /
+                                (objetivoSemanal * barsWeeks.length)
+                            ) + "%"
+                          : "—"}
+                      </td>
+
+                      {/* Semana 2 */}
+                      <td className="px-3 py-2 text-center text-[10px]">
+                        {formatNumber(
+                          barsWeeks.reduce(
+                            (acc, r) => acc + (Number(r.w2) || 0),
+                            0
+                          )
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center text-[10px] text-slate-600">
+                        {objetivoSemanal > 0
+                          ? Math.round(
+                              (barsWeeks.reduce(
+                                (acc, r) => acc + (Number(r.w2) || 0),
+                                0
+                              ) *
+                                100) /
+                                (objetivoSemanal * barsWeeks.length)
+                            ) + "%"
+                          : "—"}
+                      </td>
+
+                      {/* Semana 3 */}
+                      <td className="px-3 py-2 text-center text-[10px]">
+                        {formatNumber(
+                          barsWeeks.reduce(
+                            (acc, r) => acc + (Number(r.w3) || 0),
+                            0
+                          )
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center text-[10px] text-slate-600">
+                        {objetivoSemanal > 0
+                          ? Math.round(
+                              (barsWeeks.reduce(
+                                (acc, r) => acc + (Number(r.w3) || 0),
+                                0
+                              ) *
+                                100) /
+                                (objetivoSemanal * barsWeeks.length)
+                            ) + "%"
+                          : "—"}
+                      </td>
+
+                      {/* Semana 4 */}
+                      <td className="px-3 py-2 text-center text-[10px]">
+                        {formatNumber(
+                          barsWeeks.reduce(
+                            (acc, r) => acc + (Number(r.w4) || 0),
+                            0
+                          )
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center text-[10px] text-slate-600">
+                        {objetivoSemanal > 0
+                          ? Math.round(
+                              (barsWeeks.reduce(
+                                (acc, r) => acc + (Number(r.w4) || 0),
+                                0
+                              ) *
+                                100) /
+                                (objetivoSemanal * barsWeeks.length)
+                            ) + "%"
+                          : "—"}
+                      </td>
+
+                      {/* Total general */}
+                      <td className="px-3 py-2 text-center text-[10px]">
+                        {formatNumber(
+                          barsWeeks.reduce(
+                            (acc, r) =>
+                              acc +
+                              (Number(r.w1) || 0) +
+                              (Number(r.w2) || 0) +
+                              (Number(r.w3) || 0) +
+                              (Number(r.w4) || 0),
+                            0
+                          )
+                        )}
+                      </td>
+
+                      {/* Columna de alcance mensual */}
+                      <td className="px-3 py-2 text-center text-[10px]"> - </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </>
           )}
         </Box>
       </div>

@@ -70,15 +70,25 @@ function buildOwnerCriterion(ids) {
   };
 }
 
+/* === Filtro de usuarios ACTIVO (igual que en Citas) === */
+const ACTIVE_STATUS_ID = new mongoose.Types.ObjectId(
+  "68a4f3dc27e6abe98157a845"
+); // _id "Activo"
+function withActiveStatus(base = {}) {
+  return {
+    ...base,
+    $or: [
+      { estadoUsuario: ACTIVE_STATUS_ID },
+      { estadoUsuario: String(ACTIVE_STATUS_ID) },
+      { "estadoUsuario._id": ACTIVE_STATUS_ID },
+      { "estadoUsuario._id": String(ACTIVE_STATUS_ID) },
+      { "estadoUsuario.nombre": "Activo" },
+      { "estadoUsuario.slug": "activo" },
+    ],
+  };
+}
+
 /* ==================== Controller ==================== */
-/**
- * GET /api/reportes/oportunidades/por-ejecutivo
- * Query:
- *   - from/to (YYYY-MM-DD)  o  month/year
- *   - includeAllTeams=1  (efectivo solo para Sistemas/Admin)
- * Respuesta:
- *   { items:[{ejecutivoId, ejecutivo, total}], members:[{_id,name}] }
- */
 export async function distribucionPorEjecutivoOportunidades(req, res) {
   try {
     const u = req.user || {};
@@ -89,17 +99,16 @@ export async function distribucionPorEjecutivoOportunidades(req, res) {
 
     dbg("init", { user: u.email || u._id, includeAllTeams, query: req.query });
 
-    // ===== 1) Obtener miembros (equipo o global) =====
+    // ===== 1) Obtener miembros (solo ACTIVO) =====
     let miembros = [];
     if (includeAllTeams) {
-      // Sistemas → todos los comerciales (aunque no tengan oportunidades)
-      const q = commercialRoleQuery();
-      miembros = await User.find(q)
-        .select({ _id: 1, name: 1, email: 1 })
+      // Sistemas → todos los comerciales ACTIVO
+      miembros = await User.find(withActiveStatus(commercialRoleQuery()))
+        .select({ _id: 1, name: 1, email: 1, estadoUsuario: 1 })
         .lean();
-      dbg("miembros (global comerciales) =", miembros.length);
+      dbg("miembros (global comerciales activos) =", miembros.length);
     } else {
-      // Supervisor → sus equipos
+      // Supervisor → sus equipos (ACTIVO)
       const equipos = await Equipo.find({ supervisor: u._id })
         .select("_id")
         .lean();
@@ -107,23 +116,25 @@ export async function distribucionPorEjecutivoOportunidades(req, res) {
         "equipos supervisor =",
         equipos.map((e) => e._id.toString())
       );
+
       if (!equipos.length) {
-        // Fallback: si es Sistemas sin equipos configurados, trae comerciales
+        // Fallback: si es Sistemas sin equipos configurados, trae comerciales (ACTIVO)
         if (isSistemas(u)) {
-          const q = commercialRoleQuery();
-          miembros = await User.find(q)
-            .select({ _id: 1, name: 1, email: 1 })
+          miembros = await User.find(withActiveStatus(commercialRoleQuery()))
+            .select({ _id: 1, name: 1, email: 1, estadoUsuario: 1 })
             .lean();
-          dbg("fallback miembros (comerciales) =", miembros.length);
+          dbg("fallback miembros (comerciales activos) =", miembros.length);
         } else {
           return res.json({ items: [], members: [] });
         }
       } else {
         const equipoIds = equipos.map((e) => e._id);
-        miembros = await User.find({ equipo: { $in: equipoIds } })
-          .select({ _id: 1, name: 1, email: 1 })
+        miembros = await User.find(
+          withActiveStatus({ equipo: { $in: equipoIds } })
+        )
+          .select({ _id: 1, name: 1, email: 1, estadoUsuario: 1 })
           .lean();
-        dbg("miembros (equipos) =", miembros.length);
+        dbg("miembros (equipos activos) =", miembros.length);
       }
     }
 
@@ -142,7 +153,7 @@ export async function distribucionPorEjecutivoOportunidades(req, res) {
       end,
       useLTE = false;
     if (req.query.from && req.query.to) {
-      // Inclusivo con zona local
+      // Inclusivo con zona local (-05:00 Lima)
       start = new Date(`${req.query.from}T00:00:00.000-05:00`);
       end = new Date(`${req.query.to}T23:59:59.999-05:00`);
       useLTE = true;
@@ -158,7 +169,7 @@ export async function distribucionPorEjecutivoOportunidades(req, res) {
     }
     dbg("dateRange", { start, end, useLTE });
 
-    // ===== 3) Aggregate oportunidades por owner =====
+    // ===== 3) Criterios comunes =====
     const ownerCrit = buildOwnerCriterion(memberIds);
     const match = {
       ...ownerCrit,
@@ -167,6 +178,92 @@ export async function distribucionPorEjecutivoOportunidades(req, res) {
         : { $gte: start, $lt: end },
     };
 
+    // ===== 3A) group=week → devolver por semana (1..4) mostrando 0s =====
+    if (String(req.query.group || "") === "week") {
+      const groupedWeeks = await Opportunity.aggregate([
+        { $match: match },
+        {
+          $project: {
+            ownerId: 1,
+            day: {
+              $dayOfMonth: { date: "$createdAt", timezone: "America/Lima" },
+            },
+          },
+        },
+        {
+          $addFields: {
+            semana: {
+              $switch: {
+                branches: [
+                  { case: { $lte: ["$day", 7] }, then: 1 }, // 1–7
+                  {
+                    case: {
+                      $and: [{ $gt: ["$day", 7] }, { $lte: ["$day", 15] }],
+                    },
+                    then: 2,
+                  }, // 8–15
+                  {
+                    case: {
+                      $and: [{ $gt: ["$day", 15] }, { $lte: ["$day", 23] }],
+                    },
+                    then: 3,
+                  }, // 16–23
+                ],
+                default: 4, // 24–fin
+              },
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { ownerId: "$ownerId", semana: "$semana" },
+            total: { $sum: 1 },
+          },
+        },
+      ]);
+
+      // Inicializa TODOS con S1..S4 = 0
+      const membersArr = miembros
+        .map((m) => ({ _id: String(m._id), name: nameById.get(String(m._id)) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const items = [];
+      for (const m of membersArr) {
+        for (let w = 1; w <= 4; w++) {
+          items.push({
+            ejecutivoId: m._id,
+            ejecutivo: m.name || "SIN NOMBRE",
+            semana: w,
+            total: 0,
+          });
+        }
+      }
+
+      // Índice para pisar rápido
+      const idx = new Map(); // `${id}-${w}` -> index
+      items.forEach((it, i) => idx.set(`${it.ejecutivoId}-${it.semana}`, i));
+
+      for (const g of groupedWeeks) {
+        const id = String(g._id.ownerId);
+        const w = Number(g._id.semana);
+        const key = `${id}-${w}`;
+        if (idx.has(key)) {
+          items[idx.get(key)].total = g.total;
+        }
+      }
+
+      // Orden por nombre y semana
+      items.sort((a, b) =>
+        a.ejecutivo === b.ejecutivo
+          ? a.semana - b.semana
+          : a.ejecutivo.localeCompare(b.ejecutivo)
+      );
+
+      const members = membersArr;
+      return res.json({ items, members });
+    }
+
+    // ===== 3B) Rama por defecto: totales por ejecutivo (mostrar ceros) =====
     const grouped = await Opportunity.aggregate([
       { $match: match },
       { $group: { _id: "$ownerId", total: { $sum: 1 } } },
@@ -175,7 +272,6 @@ export async function distribucionPorEjecutivoOportunidades(req, res) {
 
     const totalsById = new Map(grouped.map((g) => [String(g._id), g.total]));
 
-    // ===== 4) Combinar con todos los miembros (mostrar ceros) =====
     const items = miembros
       .map((m) => ({
         ejecutivoId: String(m._id),
