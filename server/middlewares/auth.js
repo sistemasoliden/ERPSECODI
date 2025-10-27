@@ -25,57 +25,58 @@ export const ESTADO_ACTIVO_ID = "68a4f3dc27e6abe98157a845";
  */
 export async function verifyToken(req, res, next) {
   try {
-    // Soporta 'authorization' y 'Authorization'
-    const raw =
-      req.headers.authorization || req.headers.Authorization || "";
-
+    const raw = req.headers.authorization || req.headers.Authorization || "";
     if (!raw || !raw.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Token requerido" });
+      return res.status(401).json({ code: "NO_TOKEN", message: "Token requerido" });
     }
 
-    // Limpia comillas si el token fue guardado con JSON.stringify accidentalmente
+    // Token sin comillas accidentales
     let token = raw.slice(7).trim().replace(/^"|"$/g, "");
 
-    // Validación rápida del formato (3 partes)
+    // Formato JWT (3 partes)
     if (token.split(".").length !== 3) {
-      return res.status(401).json({ message: "Token inválido" });
+      return res.status(401).json({ code: "BAD_FORMAT", message: "Token inválido" });
     }
 
-    // Verificación del JWT
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Verifica firma y expiración; tolera leves desajustes de reloj
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 5 });
 
-    // Acepta 'id' o '_id' en el payload
+    // Acepta id/_id en el payload
     const userId = decoded?.id || decoded?._id;
     if (!userId || !mongoose.isValidObjectId(String(userId))) {
-      return res.status(401).json({ message: "Token inválido" });
+      return res.status(401).json({ code: "BAD_TOKEN", message: "Token inválido" });
     }
 
-    // Carga del usuario
+    // Carga de usuario
     const user = await User.findById(userId)
       .select("_id role estadoUsuario name email")
       .lean();
 
     if (!user) {
-      return res.status(401).json({ message: "Usuario no encontrado" });
+      return res.status(401).json({ code: "USER_NOT_FOUND", message: "Usuario no encontrado" });
     }
 
     const roleId = String(user.role?._id || user.role || "");
-
     req.user = {
       _id: user._id,
       roleId,
-      isAdmin: [ROLES_IDS.sistemas, ROLES_IDS.gerencia].includes(roleId),
+      isAdmin: [ROLES_IDS.sistemas, ROLES_IDS.gerencia].map(String).includes(roleId),
       name: user.name,
       email: user.email,
-      estadoUsuario: user.estadoUsuario, // por si quieres validar activo
+      estadoUsuario: user.estadoUsuario,
     };
 
-    next();
+    return next();
   } catch (err) {
+    // Importante: distinguir expiración
     console.error("verifyToken error:", err?.name, err?.message);
-    return res.status(401).json({ message: "Token inválido" });
+    if (err?.name === "TokenExpiredError") {
+      return res.status(401).json({ code: "TOKEN_EXPIRED", message: "Token expirado" });
+    }
+    return res.status(401).json({ code: "BAD_TOKEN", message: "Token inválido" });
   }
 }
+
 
 /** Middleware de autorización por rol (RBAC) */
 export function requireRoles(allowedRoleIds = []) {

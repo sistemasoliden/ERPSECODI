@@ -6,7 +6,7 @@ import RucCard from "../components/RucCard.jsx";
 import SkeletonRucCard from "../components/SkeletonRucCard.jsx";
 
 export default function MiBase() {
-  const reqIdRef = useRef(0); // <<— id de la última petición emitida
+  const reqIdRef = useRef(0); // id de la última petición emitida
 
   const { token } = useAuth();
   const authHeader = useMemo(
@@ -24,12 +24,74 @@ export default function MiBase() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
+  // === Buckets de tamaño por Nº de líneas ===
+  const BUCKETS = [
+    { key: "few", label: "Sin Líneas ", range: "0", test: (n) => n === 0 },
+    {
+      key: "small",
+      label: "Small (1 - 14)",
+      range: "1-14",
+      test: (n) => n >= 1 && n <= 14,
+    },
+    {
+      key: "medium",
+      label: "Medium (15 - 40)",
+      range: "15-40",
+      test: (n) => n >= 15 && n <= 40,
+    },
+    { key: "large", label: "Large (41 +)", range: "41+", test: (n) => n >= 41 },
+  ];
+
+  // Colores por bucket (idle = suave, active = sólido)
+  const bucketClasses = (key, active) => {
+    const map = {
+      few: active
+        ? "bg-gray-700 text-white border-black"
+        : "bg-gray-50 text-gray-800 border-black hover:bg-gray-100",
+      small: active
+        ? "bg-emerald-700 text-white border-black"
+        : "bg-emerald-50 text-emerald-800 border-black hover:bg-emerald-100",
+      medium: active
+        ? "bg-amber-700 text-white border-black"
+        : "bg-amber-50 text-amber-800 border-black hover:bg-amber-100",
+      large: active
+        ? "bg-indigo-700 text-white border-black"
+        : "bg-indigo-50 text-indigo-800 border-black hover:bg-indigo-100",
+    };
+    return (
+      map[key] ||
+      (active
+        ? "bg-gray-700 text-white border-gray-700"
+        : "bg-white text-gray-800 border-gray-300")
+    );
+  };
+
+  // Normaliza número
+  const toNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+  // Total de líneas por empresa (suma de fuentes conocidas)
+  // Total de líneas SOLO de Movistar + Entel
+  const getTotalLineas = (it) => {
+    const mov = toNum(it?.movistarLines);
+    const ent = toNum(it?.entelLines);
+    return mov + ent;
+  };
+
+  // Bucket para un total
+  const getBucketKey = (total) => {
+    if (total === 0) return "few";
+    if (total <= 14) return "small";
+    if (total <= 40) return "medium";
+    return "large";
+  };
+
+  const [selectedBuckets, setSelectedBuckets] = useState(() => new Set()); // e.g. {'small','medium'}
+
   /* =========================
    *  DATA LOAD
    * ========================= */
-  // dentro de MiBase.jsx (o donde esté tu componente MiBase)
   const fetchAssigned = async () => {
-    const myReqId = ++reqIdRef.current; // id de esta llamada
+    const myReqId = ++reqIdRef.current;
     setLoading(true);
     setErr("");
     try {
@@ -38,7 +100,6 @@ export default function MiBase() {
         params: { userId: "me", page, limit, q: q || undefined },
       });
 
-      // Si llegó una respuesta vieja, la ignoramos
       if (myReqId !== reqIdRef.current) return;
 
       const { items: rawItems, total, pages } = res.data || {};
@@ -59,16 +120,14 @@ export default function MiBase() {
         })
       );
 
-      // De nuevo, por si otra llamada terminó mientras prefetch-eábamos SF
       if (myReqId !== reqIdRef.current) return;
 
       setItems(itemsWithSF);
       setTotal(total || 0);
       setPages(pages || 1);
-      // 👇 ya no tocamos setPage() aquí
     } catch (err) {
       if (myReqId !== reqIdRef.current) return;
-      setErr("No se pudo cargar tu base asignada.");
+      setErr("No se pudo cargar tu base asignada.", err);
     } finally {
       if (myReqId === reqIdRef.current) setLoading(false);
     }
@@ -81,9 +140,18 @@ export default function MiBase() {
         params: { userId: "me" },
       });
       setStats(res.data || null);
-    } catch (e) {
+    } catch {
       // opcional: console.warn("No se pudieron cargar las stats", e);
     }
+  };
+
+  const toggleBucket = (key) => {
+    setSelectedBuckets((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -100,6 +168,29 @@ export default function MiBase() {
   const canNext = page < pages;
 
   /* =========================
+   *  ENRIQUECER + CONTAR + FILTRAR
+   * ========================= */
+  const itemsWithLines = useMemo(() => {
+    return (items || []).map((it) => {
+      const totalLineas = getTotalLineas(it);
+      const bucketKey = getBucketKey(totalLineas);
+      return { ...it, __totalLineas: totalLineas, __bucketKey: bucketKey };
+    });
+  }, [items]);
+
+  const bucketCounts = useMemo(() => {
+    const counts = { few: 0, small: 0, medium: 0, large: 0 };
+    for (const it of itemsWithLines)
+      counts[it.__bucketKey] = (counts[it.__bucketKey] || 0) + 1;
+    return counts;
+  }, [itemsWithLines]);
+
+  const filteredItems = useMemo(() => {
+    if (!selectedBuckets || selectedBuckets.size === 0) return itemsWithLines;
+    return itemsWithLines.filter((it) => selectedBuckets.has(it.__bucketKey));
+  }, [itemsWithLines, selectedBuckets]);
+
+  /* =========================
    *  QUITAR CARD AL TIPIFICAR
    * ========================= */
   const handleTipificar = async (ruc) => {
@@ -108,7 +199,7 @@ export default function MiBase() {
         (it) => String(it.rucStr || it.ruc) !== String(ruc).replace(/\D/g, "")
       )
     );
-    fetchStats(); // el backend ya cuenta usando Assignment.tipifiedAt
+    fetchStats();
   };
 
   /* =========================
@@ -122,7 +213,6 @@ export default function MiBase() {
       const contactRows = [];
       const unidadRows = [];
 
-      // Obtener contactos y unidades para cada base en paralelo
       await Promise.all(
         items.map(async (it) => {
           const baseId = it._id;
@@ -139,7 +229,6 @@ export default function MiBase() {
           const ent = it.entelLines ?? 0;
           const otr = it.otherLines ?? 0;
 
-          // Hoja 1: RUCs (datos de la tarjeta)
           rucRows.push({
             RUC: rucStr,
             "Razón Social": razonSocial,
@@ -153,9 +242,9 @@ export default function MiBase() {
             "Líneas Claro": cla,
             "Líneas Entel": ent,
             "Líneas Otros": otr,
+            "Total líneas": (mov || 0) + (cla || 0) + (ent || 0) + (otr || 0),
           });
 
-          // Llamadas para completar hojas 2 y 3
           const [resContacts, resUnidades] = await Promise.all([
             api
               .get(`/contactos-empresas/by-base/${baseId}`, authHeader)
@@ -172,7 +261,6 @@ export default function MiBase() {
             ? resUnidades.data
             : [];
 
-          // Hoja 2: Contactos
           contacts.forEach((c) => {
             contactRows.push({
               RUC: rucStr,
@@ -190,7 +278,6 @@ export default function MiBase() {
             });
           });
 
-          // Hoja 3: Unidades
           unidades.forEach((u) => {
             unidadRows.push({
               RUC: rucStr,
@@ -213,9 +300,7 @@ export default function MiBase() {
         })
       );
 
-      // Construir workbook
       const wb = XLSX.utils.book_new();
-
       const wsRucs = XLSX.utils.json_to_sheet(rucRows);
       const wsContacts = XLSX.utils.json_to_sheet(contactRows);
       const wsUnidades = XLSX.utils.json_to_sheet(unidadRows);
@@ -224,7 +309,6 @@ export default function MiBase() {
       XLSX.utils.book_append_sheet(wb, wsContacts, "Contactos");
       XLSX.utils.book_append_sheet(wb, wsUnidades, "Unidades");
 
-      // Descargar
       XLSX.writeFile(
         wb,
         `MiBase_${new Date().toISOString().slice(0, 10)}.xlsx`
@@ -237,7 +321,7 @@ export default function MiBase() {
 
   return (
     <div className="p-6 min-h-dvh bg-[#F2F0F0]">
-      {/* Toolbar 100% en una fila (con scroll horizontal si no entra) */}
+      {/* Toolbar */}
       <div className="flex items-center gap-4 overflow-x-auto py-3 px-2 rounded-md">
         {/* stats compactos */}
         <div className="flex items-stretch gap-2.5 shrink-0">
@@ -295,54 +379,67 @@ export default function MiBase() {
           className="w-64 md:w-80 border border-gray-900 rounded px-3 py-3 text-[12px]"
         />
 
-        {/* acciones */}
-        <button
-          onClick={() => {
-            setPage(1); /* el useEffect hará fetch */
-          }}
-          className="px-5 py-4 bg-gray-800 border-gray-900 text-white font-bold text-xs rounded"
-        >
-          Buscar
-        </button>
-
         <button
           onClick={() => {
             setQ("");
             setPage(1);
           }}
-          className="px-5 py-4 bg-gray-400 border-gray-900 text-gray-800 text-xs font-bold rounded"
+          className="px-5 py-3.5 bg-gray-400 border-gray-900 text-gray-800 text-xs font-bold rounded"
         >
           Limpiar
         </button>
+
+        {/* Filtro por tamaño de líneas */}
 
         {/* exportar (derecha) */}
         <button
           onClick={handleExportExcel}
           disabled={loading || !items.length}
-          className="ml-auto px-3 py-3 border-gray-900 bg-[#77C7A5] text-black font-bold text-xs rounded disabled:opacity-50"
+          className="ml-auto px-3 py-3.5 border-gray-900 bg-[#77C7A5] text-black font-bold text-xs rounded disabled:opacity-50"
           title="Exportar RUCs, Contactos y Unidades a Excel"
         >
           Exportar Excel
         </button>
       </div>
 
+      <div className="flex items-center gap-2.5 ml-2 shrink-0">
+        {BUCKETS.map((b) => {
+          const active = selectedBuckets.has(b.key); // <-- ahora Set
+          return (
+            <button
+              key={b.key}
+              onClick={() => toggleBucket(b.key)}
+              className={[
+                "flex flex-col items-center justify-center",
+                "w-[140px] h-[50px] px-3 py-3 rounded-md border border-black text-xs font-bold transition mb-4",
+                bucketClasses(b.key, active),
+              ].join(" ")}
+              title={b.label}
+            >
+              <span className="font-bold">{b.label}</span>
+              <span className="text-[10px] opacity-80 mt-1">
+                ({bucketCounts[b.key] || 0})
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Lista de RUCs */}
       {err && <div className="text-red-700 text-sm">{err}</div>}
-      {/* opcional: retirar el texto "Cargando…" porque ahora mostramos skeletons */}
-      {/* {loading && <div className="text-sm text-gray-600">Cargando…</div>} */}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-4">
         {loading
           ? Array.from({ length: Math.max(limit, 6) }).map((_, i) => (
               <SkeletonRucCard key={`sk-${i}`} />
             ))
-          : items.map((it) => (
+          : filteredItems.map((it) => (
               <RucCard key={it._id} item={it} onTipificar={handleTipificar} />
             ))}
       </div>
 
-      {/* Empty state cuando no hay resultados y no está cargando */}
-      {!loading && !items.length && !err && (
+      {/* Empty state */}
+      {!loading && !filteredItems.length && !err && (
         <div className="text-sm text-gray-600 mt-4">
           No hay resultados para tu búsqueda.
         </div>

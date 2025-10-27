@@ -792,6 +792,7 @@ export default function ReportTipificacionSupervisor() {
           <col className="w-[14rem]" /> {/* ~224px: Ejecutivo */}
           <col className="w-[7rem]" />  {/* ~112px: Base */}
           <col className="w-[9rem]" />  {/* ~144px: Oportunidades */}
+          <col className="w-[9rem]" />  {/* ~144px: Cuentas sin trabajo */}
           <col className="w-[10rem]" /> {/* ~160px: Efectividad */}
         </colgroup>
 
@@ -799,7 +800,8 @@ export default function ReportTipificacionSupervisor() {
           <tr>
             <th className="px-2 py-3 text-center">Ejecutivo</th>
             <th className="px-2 py-3 text-center">Base</th>
-            <th className="px-2 py-3 text-center">Oportunidades de Negociacion</th>
+            <th className="px-2 py-3 text-center">Oportunidades de Negociación</th>
+            <th className="px-2 py-3 text-center">Cuentas sin Trabajo</th>
             <th className="px-2 py-3 text-center">Efectividad</th>
           </tr>
         </thead>
@@ -808,23 +810,37 @@ export default function ReportTipificacionSupervisor() {
           {effRows.map((r, idx) => {
             const base = Number(r.base) || 0;
             const ops = Number(r.oportunidades) || 0;
+            const sinTrabajo = Math.max(base - ops, 0);
             const pct = base > 0 ? Math.round((ops * 100) / base) : 0;
+
             return (
               <tr
                 key={r.ejecutivoId || idx}
                 className={idx % 2 ? "bg-[#fafafa]" : "bg-white"}
               >
-                <td className="px-3 py-2 border-b border-gray-200 text-center  font-bold text-slate-800">
+                {/* Ejecutivo */}
+                <td className="px-3 py-2 border-b border-gray-200 text-center font-bold text-slate-800">
                   <div className="truncate" title={r.ejecutivo}>
                     {r.ejecutivo}
                   </div>
                 </td>
+
+                {/* Base */}
                 <td className="px-3 py-2 border-b border-gray-200 text-center text-orange-600 font-semibold">
                   {formatNumber(base)}
                 </td>
+
+                {/* Oportunidades */}
                 <td className="px-3 py-2 border-b border-gray-200 text-center text-slate-900 font-semibold">
                   {formatNumber(ops)}
                 </td>
+
+                {/* Cuentas sin trabajo */}
+                <td className="px-3 py-2 border-b border-gray-200 text-center text-black font-semibold">
+                  {formatNumber(sinTrabajo)}
+                </td>
+
+                {/* Efectividad */}
                 <td className="px-3 py-2 border-b border-gray-200">
                   <div className="text-center font-semibold text-slate-900">
                     {pct}%
@@ -841,6 +857,7 @@ export default function ReportTipificacionSupervisor() {
           })}
         </tbody>
 
+        {/* Totales */}
         <tfoot>
           <tr className="bg-gray-100 font-bold text-slate-800">
             <td className="px-3 py-2 text-[10px]">Totales</td>
@@ -851,8 +868,18 @@ export default function ReportTipificacionSupervisor() {
             </td>
             <td className="px-3 py-2 text-center text-[10px]">
               {formatNumber(
+                effRows.reduce((a, r) => a + (Number(r.oportunidades) || 0), 0)
+              )}
+            </td>
+            <td className="px-3 py-2 text-center text-[10px] text-rose-600">
+              {formatNumber(
                 effRows.reduce(
-                  (a, r) => a + (Number(r.oportunidades) || 0),
+                  (a, r) =>
+                    a +
+                    Math.max(
+                      (Number(r.base) || 0) - (Number(r.oportunidades) || 0),
+                      0
+                    ),
                   0
                 )
               )}
