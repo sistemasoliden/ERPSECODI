@@ -102,6 +102,59 @@ export default function OpportunityModal({
       maximumFractionDigits: 2,
     })}`;
 
+  // Resolver nombres para el RESUMEN cuando vengan solo IDs
+  useEffect(() => {
+    const needTipo = open && !tipoVentaName && !!op?.tipoVentaId;
+    const needProd = open && !productoName && !!op?.productoId;
+    if (!needTipo && !needProd) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [tRes, pRes] = await Promise.all([
+          needTipo
+            ? api.get("/tiposventas", authHeader)
+            : Promise.resolve(null),
+          needProd ? api.get("/productos", authHeader) : Promise.resolve(null),
+        ]);
+
+        if (tRes?.data && needTipo && !cancelled) {
+          const t = (tRes.data || []).find(
+            (x) => String(x._id) === String(op?.tipoVentaId)
+          );
+          if (t) setTipoVentaName(t.nombre || t.name || "");
+        }
+
+        if (pRes?.data && needProd && !cancelled) {
+          const p = (pRes.data || []).find(
+            (x) => String(x._id) === String(op?.productoId)
+          );
+          if (p) {
+            setProductoName(p.nombre || p.name || "");
+            // si no vino el tipo pero el producto lo trae, completa también el tipo
+            if (!op?.tipoVentaId && p.tipoVentaId) {
+              setTipoVentaId(String(p.tipoVentaId));
+            }
+          }
+        }
+      } catch {
+        // silencioso: si falla, el resumen seguirá mostrando "—"
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    open,
+    op?.tipoVentaId,
+    op?.productoId,
+    tipoVentaName,
+    productoName,
+    authHeader,
+  ]);
+
   // Si cambia tipo, validar producto
   useEffect(() => {
     if (!editTip) return;
@@ -475,7 +528,10 @@ export default function OpportunityModal({
                               icon={<Package className="w-4 h-4" />}
                               label="Tipo de venta"
                             >
-                              {tipoVentaName || "—"}
+                              {op?.tipoVentaNombre ||
+                                op?.tipoVenta?.nombre ||
+                                tipoVentaName ||
+                                "—"}
                             </Tile>
 
                             {/* Producto */}
@@ -483,7 +539,10 @@ export default function OpportunityModal({
                               icon={<Package className="w-4 h-4" />}
                               label="Producto"
                             >
-                              {productoName || "—"}
+                              {op?.productoNombre ||
+                                op?.producto?.nombre ||
+                                productoName ||
+                                "—"}
                             </Tile>
                           </div>
                         </div>

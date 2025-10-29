@@ -119,67 +119,99 @@ export async function createOpportunity(req, res) {
     if (!userId) return res.status(401).json({ error: "No autenticado" });
 
     const {
-      ruc, // string (11 dígitos)
+      ruc,
       monto,
       notas,
       estadoId,
-      contactId, // opcional
+      contactId,
       cantidad,
-      tipoVentaId, // opcional
-      productoId, // opcional (depende de tipoVenta)
-      modalidadVentaId, // opcional
+      tipoVentaId,
+      productoId,
+      modalidadVentaId,
     } = req.body || {};
 
-    if (!ruc) return res.status(400).json({ error: "RUC requerido" });
+    // ---- RUC
+    const rucStr = String(ruc || "").replace(/\D/g, "");
+    if (!rucStr || rucStr.length !== 11)
+      return res.status(400).json({ error: "RUC requerido (11 dígitos)" });
 
-    // resolver razón social desde BaseSecodi
-    const base = await BaseSecodi.findOne({
-      ruc: String(ruc).replace(/\D/g, ""),
-    });
+    // ---- Razón social desde BaseSecodi (si existe)
+    const base = await BaseSecodi.findOne({ ruc: rucStr }).lean();
     const razonSocial = base?.razonSocial || base?.RAZON_SOCIAL || "";
 
-    // etapa
+    // ---- Estado/Etapa
     const estadoObjId = estadoId
       ? new mongoose.Types.ObjectId(estadoId)
       : DEFAULT_ESTADO_ID;
-    const tipo = await TipoOportunidad.findById(estadoObjId);
+
+    const tipo = await TipoOportunidad.findById(estadoObjId).lean();
     if (!tipo) return res.status(400).json({ error: "Estado inválido" });
 
-    // validar opcionales (si llegan)
-    const clean = {};
-    if (contactId && mongoose.isValidObjectId(contactId))
-      clean.contactId = contactId;
-    if (typeof monto === "number") clean.monto = monto;
-    if (typeof cantidad === "number") clean.cantidad = cantidad;
-    if (tipoVentaId && mongoose.isValidObjectId(tipoVentaId)) {
-      const ok = await TipoVenta.findById(tipoVentaId).select("_id");
-      if (ok) clean.tipoVentaId = tipoVentaId;
-    }
-    if (productoId && mongoose.isValidObjectId(productoId)) {
-      const ok = await Producto.findById(productoId).select("_id");
-      if (ok) clean.productoId = productoId;
-    }
-    if (modalidadVentaId && mongoose.isValidObjectId(modalidadVentaId)) {
-      const ok = await ModalidadVenta.findById(modalidadVentaId).select("_id");
-      if (ok) clean.modalidadVentaId = modalidadVentaId;
-    }
-    if (notas) clean.notas = String(notas);
+    // ---- Saneos numéricos
+    const montoNum = Number(monto) || 0;
+    const cantidadNum = Math.max(1, Number(cantidad) || 1);
 
+    // ---- Campos opcionales válidos
+    const clean = {};
+
+    if (contactId && mongoose.isValidObjectId(contactId)) {
+      clean.contactId = String(contactId);
+    }
+
+    // Resolver en paralelo nombres/ids de tipo y producto si llegan
+    const lookups = await Promise.all([
+      tipoVentaId && mongoose.isValidObjectId(tipoVentaId)
+        ? TipoVenta.findById(tipoVentaId).select("_id nombre").lean()
+        : null,
+      productoId && mongoose.isValidObjectId(productoId)
+        ? Producto.findById(productoId).select("_id nombre tipoVentaId").lean()
+        : null,
+      modalidadVentaId && mongoose.isValidObjectId(modalidadVentaId)
+        ? ModalidadVenta.findById(modalidadVentaId).select("_id").lean()
+        : null,
+    ]);
+
+    const [tv, prod, mod] = lookups;
+
+    if (tv) {
+      clean.tipoVentaId = String(tv._id);
+      clean.tipoVentaNombre = tv.nombre || "";
+    }
+
+    if (prod) {
+      // (opcional) coherencia: si viene producto, pero no tipo, igual guardamos su tipo
+      clean.productoId = String(prod._id);
+      clean.productoNombre = prod.nombre || "";
+      if (!tv && prod.tipoVentaId) {
+        clean.tipoVentaId = String(prod.tipoVentaId);
+      }
+    }
+
+    if (mod) {
+      clean.modalidadVentaId = String(mod._id);
+    }
+
+    if (typeof notas === "string" && notas.trim()) {
+      clean.notas = notas.trim();
+    }
+
+    // ---- Crear
     const item = await Opportunity.create({
       ownerId: new mongoose.Types.ObjectId(userId),
-      ruc: String(ruc),
+      ruc: rucStr,
       razonSocial,
       estadoId: String(tipo._id),
-      estadoNombre: tipo.nombre,
-      monto: Number(monto) || 0,
-      cantidad: Number(cantidad) || 1,
+      estadoNombre: tipo.nombre || "",
+      monto: montoNum,
+      cantidad: cantidadNum,
       ...clean,
     });
 
-    res.json({ ok: true, item });
+    // respuesta homogénea
+    return res.json({ ok: true, item });
   } catch (err) {
     console.error("[oportunidades.create]", err);
-    res.status(500).json({ error: "No se pudo crear la oportunidad" });
+    return res.status(500).json({ error: "No se pudo crear la oportunidad" });
   }
 }
 
@@ -220,22 +252,39 @@ export async function listMyOpportunities(req, res) {
       if (toStr)   match.createdAt.$lte = new Date(`${toStr}T23:59:59.999-05:00`);
     }
 
-    const items = await Opportunity
-      .find(
-        match,
-        {
-          ruc: 1,
-          razonSocial: 1,
-          estadoNombre: 1,
-          monto: 1,
-          cantidad: 1,
-          createdAt: 1,
-        }
-      )
-      .sort({ createdAt: -1, _id: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
+    const items = await Opportunity.find(
+  match,
+  {
+    // básicos
+    ruc: 1,
+    razonSocial: 1,
+    estadoId: 1,            // <- útil para StagePath
+    estadoNombre: 1,
+    monto: 1,
+    cantidad: 1,
+    createdAt: 1,
+
+    // *** TIPIFICACIÓN ***
+    tipoVentaId: 1,
+    tipoVentaNombre: 1,     // <- NECESARIO
+    productoId: 1,
+    productoNombre: 1,      // <- NECESARIO
+
+    // fechas que usa el header del modal
+    estadoUpdatedAt: 1,
+    updatedAt: 1,
+    fechaGestion: 1,
+
+    // opcionales según tu UI
+    base: 1,
+    contacto: 1,
+  }
+)
+.sort({ createdAt: -1, _id: -1 })
+.skip((page - 1) * limit)
+.limit(limit)
+.lean();
+
 
     // Sin count (mucho más rápido). El front puede usar hasMore para paginar.
     const hasMore = items.length === limit;
