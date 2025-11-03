@@ -818,3 +818,185 @@ export async function reassignOne(req, res) {
     return res.status(500).json({ message: "Error al reasignar" });
   }
 }
+
+
+/* ------------ Export completo de la base ------------ */
+// GET /api/basesecodi/export
+export async function exportFullBase(req, res) {
+  try {
+    // Opcional: solo algunos roles pueden exportar TODO
+    if (
+      !isOneOf(req.user, [
+        ROLES.sistemas,
+        ROLES.gerencia,
+        ROLES.supervisorcomercial,
+      ])
+    ) {
+      return res
+        .status(403)
+        .json({ message: "No autorizado para exportar la base." });
+    }
+
+    const rows = await BaseSecodi.aggregate([
+      // JOIN con datasalesforce: basesecodi._id == datasalesforce.ruc (ObjectId)
+      {
+        $lookup: {
+          from: "datasalesforce",
+          localField: "_id",
+          foreignField: "ruc",
+          as: "sf",
+        },
+      },
+      {
+        $unwind: {
+          path: "$sf",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Última assignment por RUC
+      {
+        $lookup: {
+          from: "assignments",
+          let: { rucId: "$_id" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$rucId", "$$rucId"] } } },
+            { $sort: { createdAt: -1, _id: -1 } },
+            { $limit: 1 },
+          ],
+          as: "lastAssignment",
+        },
+      },
+      {
+        $unwind: {
+          path: "$lastAssignment",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Ejecutivo (users)
+      {
+        $lookup: {
+          from: "users",
+          localField: "lastAssignment.toUserId",
+          foreignField: "_id",
+          as: "exec",
+        },
+      },
+      {
+        $unwind: {
+          path: "$exec",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Tipificación
+      {
+        $lookup: {
+          from: "tipifications",
+          localField: "lastAssignment.tipificationId",
+          foreignField: "_id",
+          as: "tipif",
+        },
+      },
+      {
+        $unwind: {
+          path: "$tipif",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Subtipificación
+      {
+        $lookup: {
+          from: "subtipifications",
+          localField: "lastAssignment.subtipificationId",
+          foreignField: "_id",
+          as: "subtipif",
+        },
+      },
+      {
+        $unwind: {
+          path: "$subtipif",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Proyección final – poner "No Info" donde falte
+      {
+        $project: {
+          _id: 0,
+
+          // BASESECODI
+          ruc: {
+            $ifNull: [
+              "$rucStr",
+              {
+                $cond: [
+                  { $ifNull: ["$ruc", false] },
+                  { $toString: "$ruc" },
+                  "No Info",
+                ],
+              },
+            ],
+          },
+          razonSocial: {
+            $ifNull: [
+              "$razonSocial",
+              {
+                $ifNull: ["$razon_social", "No Info"],
+              },
+            ],
+          },
+          direccion: { $ifNull: ["$direccion", "No Info"] },
+          movistarLines: { $ifNull: ["$movistarLines", "No Info"] },
+          claroLines: { $ifNull: ["$claroLines", "No Info"] },
+          entelLines: { $ifNull: ["$entelLines", "No Info"] },
+          otherLines: { $ifNull: ["$otherLines", "No Info"] },
+          uncountedLines: { $ifNull: ["$uncountedLines", "No Info"] },
+          totalLines: { $ifNull: ["$totalLines", "No Info"] },
+
+          // DATASALESFORCE
+          type: { $ifNull: ["$sf.type", "No Info"] },
+          segment: { $ifNull: ["$sf.segment", "No Info"] },
+          primaryConsultant: {
+            $ifNull: ["$sf.primaryConsultant", "No Info"],
+          },
+          lastAssignmentDate: {
+            $ifNull: ["$sf.lastAssignmentDate", "No Info"],
+          },
+          nextDeassignmentDate: {
+            $ifNull: ["$sf.nextDeassignmentDate", "No Info"],
+          },
+
+          // ASSIGNMENT + USER + TIPIFICACIONES
+          execName: { $ifNull: ["$exec.name", "No Info"] },
+          execEmail: { $ifNull: ["$exec.email", "No Info"] },
+          assignedAt: {
+            $ifNull: ["$lastAssignment.assignedAt", "No Info"],
+          },
+          tipificationName: {
+            $ifNull: ["$tipif.categorytip", "No Info"],
+          },
+          subtipificationName: {
+            $ifNull: ["$subtipif.name", "No Info"],
+          },
+          tipificationNote: {
+            $ifNull: ["$lastAssignment.tipificationNote", "No Info"],
+          },
+        },
+      },
+    ]).allowDiskUse(true); // por si hay muchos docs
+
+    // 👇 AQUÍ EL CAMBIO IMPORTANTE
+    const json = JSON.stringify(rows);
+
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Length", Buffer.byteLength(json));
+
+    return res.send(json);
+  } catch (err) {
+    console.error("[exportFullBase] error:", err);
+    return res.status(500).json({ message: "Error exportando la base" });
+  }
+}

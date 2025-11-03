@@ -539,7 +539,7 @@ export default function Ventas() {
                   onClick={handleEdit}
                   disabled={selected.size !== 1 || loading}
                   title="Editar"
-                  className="min-w-[110px] h-10 inline-flex items-center justify-center gap-2 rounded-md
+                  className="min-w-[110px] h-12 inline-flex items-center justify-center gap-2 rounded-md
           border border-slate-400 bg-slate-200 text-xs font-medium text-slate-800 shadow-sm
           hover:bg-slate-300 transition disabled:opacity-50 disabled:cursor-not-allowed
           dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
@@ -552,7 +552,7 @@ export default function Ventas() {
                   onClick={handleDuplicate}
                   disabled={!someSelected || loading}
                   title="Generar Copia"
-                  className="min-w-[140px] h-10 inline-flex items-center justify-center gap-2 rounded-md
+                  className="min-w-[140px] h-12 inline-flex items-center justify-center gap-2 rounded-md
           border border-purple-600 bg-purple-600 text-xs  text-white shadow-sm
           hover:bg-purple-800 transition disabled:opacity-50 disabled:cursor-not-allowed
           dark:border-purple-700 dark:bg-purple-800 dark:hover:bg-purple-700"
@@ -565,7 +565,7 @@ export default function Ventas() {
                   onClick={handleDelete}
                   disabled={!someSelected || loading}
                   title="Eliminar"
-                  className="min-w-[130px] h-10 inline-flex items-center justify-center gap-2 rounded-md
+                  className="min-w-[130px] h-12 inline-flex items-center justify-center gap-2 rounded-md
           border border-red-700 bg-red-800 text-xs  text-white shadow-sm
           hover:bg-red-900 transition disabled:opacity-50 disabled:cursor-not-allowed
           dark:border-red-800 dark:bg-red-900 dark:hover:bg-red-800"

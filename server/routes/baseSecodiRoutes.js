@@ -18,6 +18,7 @@ import {
   markTipificada,
   execDashboard,
   reassignOne,
+  exportFullBase
 } from "../controllers/baseSecodiController.js";
 
 const router = Router();
@@ -80,6 +81,17 @@ router.post(
     ROLES_IDS.supervisorcomercial,
   ]),
   reassignOne
+);
+
+// Export completo de la base
+router.get(
+  "/export",
+  verifyToken,
+  requireRoles([
+    ROLES_IDS.sistemas
+  
+  ]),
+  exportFullBase
 );
 
 export default router;

@@ -247,210 +247,212 @@ export default function RankingYProgreso() {
 
   /* ======================= Render ======================= */
   return (
-    <div className="p-6 min-h-dvh bg-[#F2F0F0]">
-      {/* Toolbar (Filtros arriba, sticky y visualmente separada) */}
-      <div className="z-30 bg-[#F2F0F0] pb-2">
-        <div className="px-2">
-          <FiltrosWrapper>
-            {(f) => (
-              <SyncFiltros value={f} onChange={setFiltros}>
-                <div className="h-0 overflow-hidden" />
-              </SyncFiltros>
-            )}
-          </FiltrosWrapper>
+  <div className="p-6 min-h-dvh bg-[#F2F0F0]">
+    {/* Toolbar (Filtros arriba, sticky y visualmente separada) */}
+    <div className="z-30 bg-[#F2F0F0] pb-2">
+      <div className="px-2">
+        <FiltrosWrapper>
+          {(f) => (
+            <SyncFiltros value={f} onChange={setFiltros}>
+              <div className="h-0 overflow-hidden" />
+            </SyncFiltros>
+          )}
+        </FiltrosWrapper>
+      </div>
+    </div>
+
+    {/* Loader inicial */}
+    {initialLoading || refreshing ? (
+      <Loader
+        variant="fullscreen"
+        message="Cargando ventas..."
+        navbarHeight={88}
+      />
+    ) : (
+      // 🔹 Contenedor principal a ancho completo (sin max-width ni centrado)
+      <div className="w-full px-4 py-6 space-y-6">
+        {/* === Línea === */}
+        <div className={THEME.card}>
+          <h3 className={THEME.title}>
+            Progreso de {ejecutivo || "(sin selección)"} ({yearSeries})
+          </h3>
+
+          <div className="mt-4 flex justify-end">
+            <select
+              value={ejecutivo}
+              onChange={(e) => setEjecutivo(e.target.value)}
+              className="border border-gray-900 bg-white rounded-md px-3 py-3 text-sm text-gray-700 shadow-sm focus:ring-1 focus:ring-blue-600"
+            >
+              {ejecutivosOpts.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+              {ejecutivosOpts.length === 0 && (
+                <option value="">(sin datos)</option>
+              )}
+            </select>
+          </div>
+
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart
+              data={progreso}
+              margin={{ top: 10, right: 30, left: 30, bottom: 10 }}
+            >
+              <defs>
+                <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset="5%"
+                    stopColor={THEME.lineColor}
+                    stopOpacity={0.9}
+                  />
+                  <stop
+                    offset="95%"
+                    stopColor={THEME.lineColor}
+                    stopOpacity={0.2}
+                  />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="mesLabel"
+                tick={{ fontSize: 10, fill: "#111", fontWeight: "bold" }}
+              />
+              <YAxis tick={false} axisLine={false} />
+              <Tooltip content={<LineTooltip />} />
+              <Legend
+                iconType="circle"
+                wrapperStyle={{
+                  fontSize: 10,
+                  fontWeight: "bold",
+                  textTransform: "capitalize",
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="Q"
+                name="Cantidad"
+                stroke="#2563eb"
+                strokeWidth={1.8}
+                dot={{ r: 2 }}
+                activeDot={{ r: 5 }}
+              >
+                <LabelList
+                  dataKey="Q"
+                  position="top"
+                  fontSize={10}
+                  fill="#111"
+                />
+              </Line>
+              <Line
+                type="monotone"
+                dataKey="CF"
+                name="CF (S/.)"
+                stroke="#14b8a6"
+                strokeWidth={1.8}
+                dot={{ r: 2 }}
+                activeDot={{ r: 5 }}
+              >
+                <LabelList
+                  dataKey="CF"
+                  position="top"
+                  fontSize={10}
+                  fill="#111"
+                />
+              </Line>
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* === Barras === */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Q */}
+          <div className={THEME.card}>
+            <h3 className={THEME.title}>Ranking por Q (Líneas)</h3>
+            <div className="h-[460px] overflow-y-auto pr-2">
+              <ResponsiveContainer width="100%" height={topQ.length * 38}>
+                <BarChart
+                  layout="vertical"
+                  data={topQ.map((r) => ({
+                    name: r.consultor || "(Sin nombre)",
+                    value: r.totalQ || 0,
+                  }))}
+                >
+                  <CartesianGrid strokeDasharray="2 2" vertical={false} />
+                  <XAxis type="number" hide />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={200}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <Tooltip content={<BarTooltip type="q" />} />
+                  <Legend
+                    iconType="circle"
+                    wrapperStyle={{ fontSize: 10, fontWeight: "bold" }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    name="Q"
+                    fill={THEME.palette[0]}
+                    radius={[0, 3, 3, 0]}
+                  >
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      fontSize={10}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* CF */}
+          <div className={THEME.card}>
+            <h3 className={THEME.title}>Ranking por CF (sin IGV)</h3>
+            <div className="h-[460px] overflow-y-auto pr-2">
+              <ResponsiveContainer width="100%" height={topCF.length * 38}>
+                <BarChart
+                  layout="vertical"
+                  data={topCF.map((r) => ({
+                    name: r.consultor || "(Sin nombre)",
+                    value: r.totalCF || 0,
+                  }))}
+                >
+                  <CartesianGrid strokeDasharray="2 2" vertical={false} />
+                  <XAxis type="number" hide />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={200}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <Tooltip content={<BarTooltip type="cf" />} />
+                  <Legend
+                    iconType="circle"
+                    wrapperStyle={{ fontSize: 10, fontWeight: "bold" }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    name="CF"
+                    fill={THEME.palette[1]}
+                    radius={[0, 3, 3, 0]}
+                  >
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      fontSize={10}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
       </div>
+    )}
+  </div>
+);
 
-      {/* Loader inicial */}
-      {initialLoading || refreshing ? (
-        <Loader
-          variant="fullscreen"
-          message="Cargando ventas..."
-          navbarHeight={88}
-        />
-      ) : (
-        <div className="mx-auto max-w-7xl px-4 py-6 space-y-8">
-          {/* === Línea === */}
-          <div className={THEME.card}>
-            <h3 className={THEME.title}>
-              Progreso de {ejecutivo || "(sin selección)"} ({yearSeries})
-            </h3>
-
-            <div className="mt-4 flex justify-end">
-              <select
-                value={ejecutivo}
-                onChange={(e) => setEjecutivo(e.target.value)}
-                className="border border-gray-900 bg-white rounded-md px-3 py-3 text-sm text-gray-700 shadow-sm focus:ring-1 focus:ring-blue-600"
-              >
-                {ejecutivosOpts.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-                {ejecutivosOpts.length === 0 && (
-                  <option value="">(sin datos)</option>
-                )}
-              </select>
-            </div>
-
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart
-                data={progreso}
-                margin={{ top: 10, right: 30, left: 30, bottom: 10 }}
-              >
-                <defs>
-                  <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="5%"
-                      stopColor={THEME.lineColor}
-                      stopOpacity={0.9}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor={THEME.lineColor}
-                      stopOpacity={0.2}
-                    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="mesLabel"
-                  tick={{ fontSize: 10, fill: "#111", fontWeight: "bold" }}
-                />
-                <YAxis tick={false} axisLine={false} />
-                <Tooltip content={<LineTooltip />} />
-                <Legend
-                  iconType="circle"
-                  wrapperStyle={{
-                    fontSize: 10,
-                    fontWeight: "bold",
-                    textTransform: "capitalize",
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="Q"
-                  name="Cantidad"
-                  stroke="#2563eb"
-                  strokeWidth={1.8}
-                  dot={{ r: 2 }}
-                  activeDot={{ r: 5 }}
-                >
-                  <LabelList
-                    dataKey="Q"
-                    position="top"
-                    fontSize={10}
-                    fill="#111"
-                  />
-                </Line>
-                <Line
-                  type="monotone"
-                  dataKey="CF"
-                  name="CF (S/.)"
-                  stroke="#14b8a6"
-                  strokeWidth={1.8}
-                  dot={{ r: 2 }}
-                  activeDot={{ r: 5 }}
-                >
-                  <LabelList
-                    dataKey="CF"
-                    position="top"
-                    fontSize={10}
-                    fill="#111"
-                  />
-                </Line>
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* === Barras === */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Q */}
-            <div className={THEME.card}>
-              <h3 className={THEME.title}>Ranking por Q (Líneas)</h3>
-              <div className="h-[460px] overflow-y-auto pr-2">
-                <ResponsiveContainer width="100%" height={topQ.length * 38}>
-                  <BarChart
-                    layout="vertical"
-                    data={topQ.map((r) => ({
-                      name: r.consultor || "(Sin nombre)",
-                      value: r.totalQ || 0,
-                    }))}
-                  >
-                    <CartesianGrid strokeDasharray="2 2" vertical={false} />
-                    <XAxis type="number" hide />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={200}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <Tooltip content={<BarTooltip type="q" />} />
-                    <Legend
-                      iconType="circle"
-                      wrapperStyle={{ fontSize: 10, fontWeight: "bold" }}
-                    />
-                    <Bar
-                      dataKey="value"
-                      name="Q"
-                      fill={THEME.palette[0]}
-                      radius={[0, 3, 3, 0]}
-                    >
-                      <LabelList
-                        dataKey="value"
-                        position="right"
-                        fontSize={10}
-                      />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* CF */}
-            <div className={THEME.card}>
-              <h3 className={THEME.title}>Ranking por CF (sin IGV)</h3>
-              <div className="h-[460px] overflow-y-auto pr-2">
-                <ResponsiveContainer width="100%" height={topCF.length * 38}>
-                  <BarChart
-                    layout="vertical"
-                    data={topCF.map((r) => ({
-                      name: r.consultor || "(Sin nombre)",
-                      value: r.totalCF || 0,
-                    }))}
-                  >
-                    <CartesianGrid strokeDasharray="2 2" vertical={false} />
-                    <XAxis type="number" hide />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={200}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <Tooltip content={<BarTooltip type="cf" />} />
-                    <Legend
-                      iconType="circle"
-                      wrapperStyle={{ fontSize: 10, fontWeight: "bold" }}
-                    />
-                    <Bar
-                      dataKey="value"
-                      name="CF"
-                      fill={THEME.palette[1]}
-                      radius={[0, 3, 3, 0]}
-                    >
-                      <LabelList
-                        dataKey="value"
-                        position="right"
-                        fontSize={10}
-                      />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }

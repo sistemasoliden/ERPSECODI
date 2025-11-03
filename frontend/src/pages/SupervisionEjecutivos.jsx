@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
+import * as XLSX from "xlsx"; // arriba del archivo (si no lo tienes, npm i xlsx)
 
 const COMMERCIAL_ROLE_ID = "68a4f22d27e6abe98157a831"; // debe coincidir con backend
 
@@ -192,6 +193,87 @@ export default function SupervisarEjecutivos() {
   const [movingRuc, setMovingRuc] = useState("");
   const [moving, setMoving] = useState(false);
 
+
+const [exporting, setExporting] = useState(false);
+const [exportPct, setExportPct] = useState(0); // opcional para mostrar en UI
+
+const handleExport = async () => {
+  try {
+    setExporting(true);
+    setExportPct(0);
+
+    const { data } = await api.get("/basesecodi/export", {
+      ...authHeader,
+     onDownloadProgress: (event) => {
+  console.log("progress event:", event);
+
+  if (event.total) {
+    const percent = Math.round((event.loaded * 100) / event.total);
+    setExportPct(percent);
+    console.log(
+      `Descarga export: ${percent}% (${event.loaded} / ${event.total} bytes)`
+    );
+  } else {
+    console.log(
+      `Descargado: ${event.loaded} bytes (sin total, no se puede calcular % real)`
+    );
+  }
+},
+
+    });
+
+    const rows = (data || []).map((row) => ({
+      RUC: row.ruc || "No Info",
+      RazonSocial: row.razonSocial || "No Info",
+      Direccion: row.direccion || "No Info",
+      MovistarLines: row.movistarLines ?? "No Info",
+      ClaroLines: row.claroLines ?? "No Info",
+      EntelLines: row.entelLines ?? "No Info",
+      OtherLines: row.otherLines ?? "No Info",
+      UncountedLines: row.uncountedLines ?? "No Info",
+      TotalLines: row.totalLines ?? "No Info",
+
+      // De datasalesforce
+      Tipo: row.type || "No Info",
+      Segmento: row.segment || "No Info",
+      ConsultorPrincipal: row.primaryConsultant || "No Info",
+      LastAssignmentDate: row.lastAssignmentDate
+        ? new Date(row.lastAssignmentDate).toLocaleString("es-PE")
+        : "No Info",
+      NextDeassignmentDate: row.nextDeassignmentDate
+        ? new Date(row.nextDeassignmentDate).toLocaleString("es-PE")
+        : "No Info",
+
+      // De assignments / tipificaciones
+      Ejecutivo: row.execName || "No Info",
+      EjecutivoEmail: row.execEmail || "No Info",
+      Tipificacion: row.tipificationName || "No Info",
+      Subtipificacion: row.subtipificationName || "No Info",
+      NotaTipificacion: row.tipificationNote || "No Info",
+      FechaAsignacion: row.assignedAt
+        ? new Date(row.assignedAt).toLocaleString("es-PE")
+        : "No Info",
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Base");
+
+    const ts = new Date()
+      .toISOString()
+      .slice(0, 19)
+      .replace(/[:T]/g, "");
+    XLSX.writeFile(wb, `basesecodi_export_${ts}.xlsx`);
+  } catch (e) {
+    console.error(e);
+    alert("No se pudo exportar la base");
+  } finally {
+    setExporting(false);
+    setExportPct(0);
+  }
+};
+
+
   const fetchDashboard = async (signal) => {
     setLoading(true);
     setErr("");
@@ -369,13 +451,15 @@ export default function SupervisarEjecutivos() {
               <option value={24}>24</option>
             </select>
 
-            <button
-              onClick={startSearch}
-              disabled={loading}
-              className="ml-auto px-6 py-3 text-sm rounded-lg bg-gray-900 text-white font-bold hover:opacity-90 disabled:opacity-50"
-            >
-              Buscar
-            </button>
+           <button
+  onClick={handleExport}
+  disabled={exporting}
+  className="ml-auto px-6 py-3.5 text-sm rounded-lg bg-gray-900 text-white font-bold hover:opacity-90 disabled:opacity-50"
+>
+  {exporting ? `Exportando... ${exportPct}%` : "Exportar"}
+</button>
+
+
           </div>
         </div>
 
