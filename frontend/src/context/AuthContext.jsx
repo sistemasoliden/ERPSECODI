@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 const AuthContext = createContext();
 
 // === Ajustes de seguridad ===
-const INACTIVITY_LIMIT_MS = 1 * 60 * 1000; // 30 minutos de inactividad
+const INACTIVITY_LIMIT_MS = 15 * 60 * 1000; // 30 minutos de inactividad
 const HEARTBEAT_MS = 15 * 1000;             // revisar cada 15s
 
 const STORAGE_KEYS = {
