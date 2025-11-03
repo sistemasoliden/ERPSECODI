@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 const AuthContext = createContext();
 
 // === Ajustes de seguridad ===
-const INACTIVITY_LIMIT_MS = 30 * 60 * 1000; // 30 minutos de inactividad
+const INACTIVITY_LIMIT_MS = 1 * 60 * 1000; // 30 minutos de inactividad
 const HEARTBEAT_MS = 15 * 1000;             // revisar cada 15s
 
 const STORAGE_KEYS = {
@@ -124,11 +124,16 @@ export function AuthProvider({ children }) {
     setTokenExpMs(null);
   };
 
-  const softLogout = (reason) => {
-    hardLogout();
-    // Aquí puedes disparar un toast/notificación global si usas uno
-    // e.g., toast.info(reason);
-  };
+ const softLogout = (reason) => {
+  hardLogout();
+
+  // Opcional: mostrar un mensaje (si tienes algún sistema de notifs)
+  // toast.info?.(reason || "Tu sesión ha finalizado");
+
+  // 🔴 Redirigir al inicio / login
+  window.location.href = "/";      // o "/login" según tus rutas
+};
+
 
   const getAuthHeader = () =>
     token ? { headers: { Authorization: `Bearer ${token}` } } : {};
