@@ -198,31 +198,28 @@ const [exporting, setExporting] = useState(false);
 const [exportPct, setExportPct] = useState(0);
 
 const handleExport = async () => {
+  let fakeTimer;
   try {
     setExporting(true);
     setExportPct(0);
 
+    // ⏳ Simulación de progreso paulatino hasta 95%
+    fakeTimer = setInterval(() => {
+      setExportPct((prev) => {
+        if (prev < 95) return prev + 1; // sube de 1 en 1
+        return prev; // se detiene en 95%
+      });
+    }, 200); // cada 200 ms (~5 s para llegar al 95%)
+
+    // 🚀 Llamada real al backend
     const { data } = await api.get("/basesecodi/export", {
       ...authHeader,
       responseType: "json",
-      onDownloadProgress: (event) => {
-        console.log("progress event:", event);
-
-        if (event.total) {
-          const percent = Math.round((event.loaded * 100) / event.total);
-          setExportPct(percent);
-          console.log(
-            `Descarga export: ${percent}% (${event.loaded} / ${event.total} bytes)`
-          );
-        } else {
-          // Sin total: no podemos calcular porcentaje real
-          // Puedes mostrar un spinner genérico o un texto tipo "Exportando..."
-          console.log(
-            `Descargado: ${event.loaded} bytes (sin total, no se puede calcular % real)`
-          );
-        }
-      },
     });
+
+    // ✅ Cuando llega la respuesta, completamos el progreso
+    clearInterval(fakeTimer);
+    setExportPct(100);
 
     const rows = (data || []).map((row) => ({
       RUC: row.ruc || "No Info",
@@ -234,8 +231,6 @@ const handleExport = async () => {
       OtherLines: row.otherLines ?? "No Info",
       UncountedLines: row.uncountedLines ?? "No Info",
       TotalLines: row.totalLines ?? "No Info",
-
-      // De datasalesforce
       Tipo: row.type || "No Info",
       Segmento: row.segment || "No Info",
       ConsultorPrincipal: row.primaryConsultant || "No Info",
@@ -245,8 +240,6 @@ const handleExport = async () => {
       NextDeassignmentDate: row.nextDeassignmentDate
         ? new Date(row.nextDeassignmentDate).toLocaleString("es-PE")
         : "No Info",
-
-      // De assignments / tipificaciones
       Ejecutivo: row.execName || "No Info",
       EjecutivoEmail: row.execEmail || "No Info",
       Tipificacion: row.tipificationName || "No Info",
@@ -263,12 +256,16 @@ const handleExport = async () => {
 
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "");
     XLSX.writeFile(wb, `basesecodi_export_${ts}.xlsx`);
+
+    // 🔚 Pequeña pausa antes de resetear
+    setTimeout(() => setExportPct(0), 1000);
   } catch (e) {
     console.error(e);
     alert("No se pudo exportar la base");
+    clearInterval(fakeTimer);
   } finally {
+    clearInterval(fakeTimer);
     setExporting(false);
-    setExportPct(0);
   }
 };
 
@@ -456,7 +453,11 @@ const handleExport = async () => {
   disabled={exporting}
   className="ml-auto px-6 py-3.5 text-sm rounded-lg bg-gray-900 text-white font-bold hover:opacity-90 disabled:opacity-50"
 >
-  {exporting ? `Exportando... ${exportPct}%` : "Exportar"}
+  {exporting
+    ? exportPct < 100
+      ? `Exportando... ${exportPct}%`
+      : "Completado ✅"
+    : "Exportar"}
 </button>
 
 
