@@ -988,15 +988,12 @@ export async function exportFullBase(req, res) {
       },
     ];
 
-    // 👇 AQUÍ EL CAMBIO IMPORTANTE: usar cursor + streaming
+    // >>> Streaming con cursor, SIN .exec()
     const cursor = BaseSecodi.aggregate(pipeline)
       .allowDiskUse(true)
-      .cursor({ batchSize: 2000 })
-      .exec();
+      .cursor({ batchSize: 2000 });
 
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    // No seteamos Content-Length porque vamos streameando
-
     res.write("[");
 
     let first = true;
@@ -1017,7 +1014,6 @@ export async function exportFullBase(req, res) {
           .status(500)
           .json({ message: "Error exportando la base (stream)" });
       }
-      // Si ya se envió cabecera, cerramos la respuesta
       return res.end();
     }
 
