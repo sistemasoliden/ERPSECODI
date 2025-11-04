@@ -837,7 +837,7 @@ export async function exportFullBase(req, res) {
         .json({ message: "No autorizado para exportar la base." });
     }
 
-    const rows = await BaseSecodi.aggregate([
+    const pipeline = [
       // JOIN con datasalesforce: basesecodi._id == datasalesforce.ruc (ObjectId)
       {
         $lookup: {
@@ -986,17 +986,48 @@ export async function exportFullBase(req, res) {
           },
         },
       },
-    ]).allowDiskUse(true); // por si hay muchos docs
+    ];
 
-    // 👇 AQUÍ EL CAMBIO IMPORTANTE
-    const json = JSON.stringify(rows);
+    // 👇 AQUÍ EL CAMBIO IMPORTANTE: usar cursor + streaming
+    const cursor = BaseSecodi.aggregate(pipeline)
+      .allowDiskUse(true)
+      .cursor({ batchSize: 2000 })
+      .exec();
 
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("Content-Length", Buffer.byteLength(json));
+    // No seteamos Content-Length porque vamos streameando
 
-    return res.send(json);
+    res.write("[");
+
+    let first = true;
+
+    try {
+      for await (const doc of cursor) {
+        if (!first) {
+          res.write(",");
+        } else {
+          first = false;
+        }
+        res.write(JSON.stringify(doc));
+      }
+    } catch (innerErr) {
+      console.error("[exportFullBase] stream error:", innerErr);
+      if (!res.headersSent) {
+        return res
+          .status(500)
+          .json({ message: "Error exportando la base (stream)" });
+      }
+      // Si ya se envió cabecera, cerramos la respuesta
+      return res.end();
+    }
+
+    res.write("]");
+    return res.end();
   } catch (err) {
     console.error("[exportFullBase] error:", err);
-    return res.status(500).json({ message: "Error exportando la base" });
+    if (!res.headersSent) {
+      return res.status(500).json({ message: "Error exportando la base" });
+    }
+    res.end();
   }
 }

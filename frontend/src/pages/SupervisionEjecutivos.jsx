@@ -195,7 +195,7 @@ export default function SupervisarEjecutivos() {
 
 
 const [exporting, setExporting] = useState(false);
-const [exportPct, setExportPct] = useState(0); // opcional para mostrar en UI
+const [exportPct, setExportPct] = useState(0);
 
 const handleExport = async () => {
   try {
@@ -204,22 +204,24 @@ const handleExport = async () => {
 
     const { data } = await api.get("/basesecodi/export", {
       ...authHeader,
-     onDownloadProgress: (event) => {
-  console.log("progress event:", event);
+      responseType: "json",
+      onDownloadProgress: (event) => {
+        console.log("progress event:", event);
 
-  if (event.total) {
-    const percent = Math.round((event.loaded * 100) / event.total);
-    setExportPct(percent);
-    console.log(
-      `Descarga export: ${percent}% (${event.loaded} / ${event.total} bytes)`
-    );
-  } else {
-    console.log(
-      `Descargado: ${event.loaded} bytes (sin total, no se puede calcular % real)`
-    );
-  }
-},
-
+        if (event.total) {
+          const percent = Math.round((event.loaded * 100) / event.total);
+          setExportPct(percent);
+          console.log(
+            `Descarga export: ${percent}% (${event.loaded} / ${event.total} bytes)`
+          );
+        } else {
+          // Sin total: no podemos calcular porcentaje real
+          // Puedes mostrar un spinner genérico o un texto tipo "Exportando..."
+          console.log(
+            `Descargado: ${event.loaded} bytes (sin total, no se puede calcular % real)`
+          );
+        }
+      },
     });
 
     const rows = (data || []).map((row) => ({
@@ -259,10 +261,7 @@ const handleExport = async () => {
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, "Base");
 
-    const ts = new Date()
-      .toISOString()
-      .slice(0, 19)
-      .replace(/[:T]/g, "");
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "");
     XLSX.writeFile(wb, `basesecodi_export_${ts}.xlsx`);
   } catch (e) {
     console.error(e);
@@ -272,6 +271,7 @@ const handleExport = async () => {
     setExportPct(0);
   }
 };
+
 
 
   const fetchDashboard = async (signal) => {
